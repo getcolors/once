@@ -162,9 +162,19 @@ yandex-cores: 2
 yandex-memory-gb: 2
 yandex-core-fraction: 100
 yandex-disk-size-gb: 20
+yandex-image-id: fd8...   # optional; pins the boot image
 ```
 
 Green creates a network, subnet, NAT-enabled instance, and boot disk. The public key is installed for the `ubuntu` user; keep its private half in `ssh-agent`. Required credential: `COLORS_PAR_YANDEX_TOKEN`, passed to OpenTofu as the provider-native `YC_TOKEN`.
+
+`:yandex-image-id` is optional and pins the boot image. Unset, the image
+resolves from `:yandex-image-family` — whatever Yandex published most recently —
+and the resolved id is then deliberately ignored on later applies: a boot
+disk's image is immutable, so following the family would plan a replacement of
+the server on every upstream release, which `:compute-prevent-destroy` (true by
+default) turns into a failed apply blocking unrelated deploys. Set it once the
+stack is real; `tofu state show yandex_compute_instance.node1` reports the
+running image as `image_id`. Moving the pin plans a replacement deliberately.
 
 ### Oracle Cloud Infrastructure
 

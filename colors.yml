@@ -108,6 +108,14 @@ yandex-cores: 2
 yandex-memory-gb: 2
 yandex-core-fraction: 100
 yandex-disk-size-gb: 20
+# Optional. Pins the boot image. Left unset, the image resolves from
+# yandex-image-family — whatever Yandex published most recently — and the
+# resolved id is then ignored on later applies, because a boot disk's image is
+# immutable and following the family would plan a replacement of the server on
+# every upstream release. Set it to the image you are actually running once the
+# stack is real; moving the pin then plans a replacement deliberately.
+# `tofu state show yandex_compute_instance.node1` reports it as image_id.
+# yandex-image-id: fd8...
 
 oci-config-file-profile: REPLACE_ME
 oci-subnet-id: REPLACE_ME

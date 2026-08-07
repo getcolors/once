@@ -961,8 +961,14 @@ yandex-platform-id: standard-v3
 yandex-cores: 2
 yandex-memory-gb: 2
 yandex-core-fraction: 100
-yandex-disk-size-gb: 20</code></pre>
+yandex-disk-size-gb: 20
+yandex-image-id: fd8...   # optional; pins the boot image</code></pre>
       <p>Creates a network, subnet, NAT-enabled Ubuntu instance, and boot disk. <code>compute-pubkey</code> is installed for the <code>ubuntu</code> user; keep the private half in <code>ssh-agent</code>. Credential: <code>COLORS_PAR_YANDEX_TOKEN</code>, passed to OpenTofu as <code>YC_TOKEN</code>.</p>
+      <p><code>yandex-image-id</code> is optional and pins the boot image. Left unset, the image resolves from <code>yandex-image-family</code> — whatever Yandex published most recently — and the resolved id is then deliberately ignored on later applies: a boot disk's image is immutable, so following the family would plan a replacement of the whole server every time a new image appears, and with <code>compute-prevent-destroy: true</code> that plan fails rather than warns, blocking unrelated deploys. The server keeps its disk and updates the OS in place. Pin the id once the stack is real; <code>tofu state show yandex_compute_instance.node1</code> reports the running image as <code>image_id</code>. With it set, no family lookup is rendered at all.</p>
+      <div class="callout warning">
+        <span class="callout-title">Changing <code>yandex-image-id</code> replaces the server</span>
+        The boot image is not something an existing instance can be moved to in place. A changed value destroys and recreates the VM, taking any data not held elsewhere with it. <code>compute-prevent-destroy: true</code> — the default — turns that into a refused apply rather than a silent rebuild.
+      </div>
 
       <h3>Oracle Cloud Infrastructure</h3>
       <pre><code class="language-yaml">provider-compute: oci

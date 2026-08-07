@@ -36,6 +36,11 @@ build_variant google COLORS_PAR_PROVIDER_COMPUTE=google
 build_variant digitalocean-vpc COLORS_PAR_DIGITALOCEAN_VPC_UUID=vpc-123
 build_variant hcloud COLORS_PAR_PROVIDER_COMPUTE=hcloud
 build_variant yandex COLORS_PAR_PROVIDER_COMPUTE=yandex
+# Both sides of the yandex-image-id branch, like oci-pinned below: the
+# unpinned side renders a family data source plus an ignore_changes, the
+# pinned side renders neither.
+build_variant yandex-pinned COLORS_PAR_PROVIDER_COMPUTE=yandex \
+  COLORS_PAR_YANDEX_IMAGE_ID=fd8example
 build_variant oci COLORS_PAR_PROVIDER_COMPUTE=oci
 # Both sides of the oci-image-id branch. The unpinned side renders a data
 # source and the pinned side renders none, so a colour whose template engine

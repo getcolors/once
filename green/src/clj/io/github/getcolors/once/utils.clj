@@ -41,8 +41,13 @@
      getcolors org. The launcher resolves these names directly, so one pinned
      older cannot find them. The rename also changes generated Terraform
      resource addresses, which existing stacks must migrate with
-     `tofu state mv` before their next apply -- see README.md."
-  10)
+     `tofu state mv` before their next apply -- see README.md.
+  11: :yandex-image-id pins the compute image, and the family path stops
+     tracking the resolved id (ignore_changes on the boot disk image). A
+     launcher pinned older renders the family lookup without the ignore, so a
+     Yandex release plans a replacement of the server and prevent_destroy
+     turns that plan into a failed apply, blocking unrelated deploys."
+  11)
 
 (defn registrable-domain
   "The DNS zone `host` belongs to: its last two labels. Multi-label suffixes
