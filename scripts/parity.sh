@@ -45,6 +45,10 @@ build_variant oci-pinned COLORS_PAR_PROVIDER_COMPUTE=oci \
 build_variant no-infra-compute COLORS_PAR_PROVIDER_COMPUTE=no-infra
 build_variant no-infra-smtp COLORS_PAR_PROVIDER_SMTP=no-infra
 build_variant no-infra-dns COLORS_PAR_PROVIDER_DNS=no-infra
+# Yandex DNS renders generated record files like Cloudflare, but as
+# yandex_dns_recordset with absolute names — a colour whose record builder
+# drifts (a missing trailing dot, an MX priority outside data) diverges here.
+build_variant yandex-dns COLORS_PAR_PROVIDER_DNS=yandex
 build_variant s3 COLORS_PAR_PROVIDER_BACKEND=s3
 build_variant r2 COLORS_PAR_PROVIDER_BACKEND=r2
 

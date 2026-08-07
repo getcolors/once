@@ -153,7 +153,7 @@ provider-compute: yandex
 compute-pubkey: ssh-ed25519 AAAA... operator
 yandex-cloud-id: b1g...
 yandex-folder-id: b1g...
-yandex-zone: ru-central1-a
+yandex-zone: kz1-a
 yandex-image-family: ubuntu-2404-lts
 yandex-name: once
 yandex-subnet-cidr: 10.0.0.0/24
@@ -231,9 +231,33 @@ Required credential: `COLORS_PAR_NO_INFRA_SMTP_PASSWORD`.
 
 ## DNS providers
 
-Use `:provider-dns "cloudflare"` or `:provider-dns "no-infra"`.
+Use `:provider-dns "cloudflare"`, `"yandex"`, or `"no-infra"`.
 
-Cloudflare requires `COLORS_PAR_CLOUDFLARE_API_TOKEN`. The token needs permission to discover and manage every zone derived from the application hosts: one proxied `A` record per application host, plus each zone's Resend verification records. `no-infra` renders an empty DNS module and requires no credential.
+### Cloudflare
+
+```yaml
+provider-dns: cloudflare
+```
+
+Requires `COLORS_PAR_CLOUDFLARE_API_TOKEN`. Every zone derived from the application hosts must already exist in the Cloudflare account, and the token needs permission to discover and manage each of them: one proxied `A` record per application host, plus each zone's Resend verification records.
+
+### Yandex Cloud DNS
+
+```yaml
+provider-dns: yandex
+yandex-cloud-id: b1g...
+yandex-folder-id: b1g...
+```
+
+Unlike Cloudflare, the zones do not have to exist beforehand: ONCE creates a public DNS zone in the configured folder for every domain derived from the application hosts, then adds one `A` record per application host and each zone's Resend verification records. Records are not proxied — hosts resolve straight to the server. Delegate each domain once at its registrar to `ns1.yandexcloud.net` and `ns2.yandexcloud.net`. Required credential: `COLORS_PAR_YANDEX_TOKEN`, passed to OpenTofu as the provider-native `YC_TOKEN` — the same token the Yandex compute provider uses, so selecting both means setting it once.
+
+### Existing DNS
+
+```yaml
+provider-dns: no-infra
+```
+
+Renders an empty DNS module and requires no credential; application and Resend records are your responsibility.
 
 ## State backends
 

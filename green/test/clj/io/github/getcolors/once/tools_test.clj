@@ -180,6 +180,55 @@
     (is (= #{"send.example.com" "resend._domainkey.example.net"}
            (set (map :name records))))))
 
+(deftest yandex-dns-records-follow-the-applications
+  (let [json (tools/render-fn :apps {:provider "yandex"
+                                     :ip "203.0.113.10"
+                                     :applications [{:host "www.example.com"}
+                                                    {:host "app.example.net"}]})
+        records (get-in (json/parse-string json true)
+                        [:resource :yandex_dns_recordset])]
+    (testing "one recordset per application host, and nothing else"
+      (is (= 2 (count records)))
+      (is (not (str/includes? json "\"*\"")) "no wildcard record")
+      (is (not (str/includes? json "cloudflare"))))
+
+    (testing "names are absolute, and there is no proxy to speak of"
+      (doseq [{:keys [name] :as record} (vals records)]
+        (is (= "A" (:type record)))
+        (is (= 300 (:ttl record)))
+        (is (= ["203.0.113.10"] (:data record)))
+        (is (not (contains? record :proxied)))
+        (is (= (case name
+                 "www.example.com." "${yandex_dns_zone.domains[\"example.com\"].id}"
+                 "app.example.net." "${yandex_dns_zone.domains[\"example.net\"].id}")
+               (:zone_id record)))))))
+
+(deftest yandex-smtp-records-embed-the-priority-and-quote-txt
+  (let [rendered (tools/render-fn
+                  :smtp
+                  {:provider "yandex"
+                   :domains [{:zone "example.com"
+                              :records [{:name "send.example.com"
+                                         :record "send"
+                                         :type "MX"
+                                         :priority 10
+                                         :value "feedback-smtp.eu-west-1.amazonses.com"}
+                                        {:name "send.example.com"
+                                         :record "send"
+                                         :type "TXT"
+                                         :value "v=spf1 include:amazonses.com ~all"}]}]})
+        records (vals (get-in (json/parse-string rendered true)
+                              [:resource :yandex_dns_recordset]))
+        by-type (into {} (map (juxt :type identity)) records)]
+    (is (= 2 (count records)))
+    (is (every? #(= "send.example.com." (:name %)) records))
+    (testing "the MX exchange is absolute and carries its priority"
+      (is (= ["10 feedback-smtp.eu-west-1.amazonses.com."]
+             (:data (by-type "MX")))))
+    (testing "the TXT value is quoted like a zone file"
+      (is (= ["\"v=spf1 include:amazonses.com ~all\""]
+             (:data (by-type "TXT")))))))
+
 (deftest multi-domain-build-renders-all-provider-resources
   (let [workdir (temp-dir)
         opts {:workdir workdir
@@ -207,6 +256,40 @@
                              "\"example.com\" : \"domain-id-not-defined-example.com\""))
           (is (str/includes? post-main
                              "\"example.net\" : \"domain-id-not-defined-example.net\""))))
+      (finally
+        (delete-tree! workdir)))))
+
+(deftest yandex-dns-build-renders-zones-and-generated-records
+  (let [workdir (temp-dir)
+        opts {:workdir workdir
+              :profile "test"
+              :green/event :build
+              :provider-compute "no-infra"
+              :provider-smtp "resend"
+              :provider-dns "yandex"
+              :yandex-cloud-id "cloud-id"
+              :yandex-folder-id "folder-id"
+              :yandex-token "a-real-yandex-token"
+              :once {:applications [{:host "www.example.net"}
+                                    {:host "www.example.com"}]}}]
+    (try
+      (let [smtp-result (tools/tofu-smtp-step opts)
+            dns-result (tools/tofu-dns-step
+                        (assoc smtp-result :once/compute-params {:ip "203.0.113.10"}))
+            dir (io/file (tools/tool-dir opts "tofu-dns"))
+            main (slurp (io/file dir "main.tf"))]
+        (is (zero? (:green/exit dns-result)))
+        (testing "every sorted application zone becomes a public zone"
+          (is (str/includes? main "toset([\"example.com\", \"example.net\"])"))
+          (is (str/includes? main "resource \"yandex_dns_zone\" \"domains\"")))
+        (testing "the folder renders, the token never does"
+          (is (str/includes? main "folder_id = \"folder-id\""))
+          (is (not (str/includes? main "a-real-yandex-token"))))
+        (testing "the generated record files are not Cloudflare-only"
+          (is (.exists (io/file dir "apps.tf.json")))
+          (is (.exists (io/file dir "smtp.tf.json")))
+          (is (str/includes? (slurp (io/file dir "apps.tf.json"))
+                             "yandex_dns_recordset"))))
       (finally
         (delete-tree! workdir)))))
 

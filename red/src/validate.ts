@@ -51,6 +51,10 @@ export const providers: Record<string, Record<string, ProviderEntry>> = {
   },
   "provider-dns": {
     cloudflare: { required: [], secrets: ["cloudflare-api-token"], tofuEnv: { "cloudflare-api-token": "CLOUDFLARE_API_TOKEN" } },
+    // Unlike Cloudflare, the Yandex DNS stage creates the public zones itself,
+    // so it needs the folder to put them in. The token is the same one the
+    // Yandex compute provider uses; selecting both demands it once.
+    yandex: { required: ["yandex-cloud-id", "yandex-folder-id"], secrets: ["yandex-token"], tofuEnv: { "yandex-token": "YC_TOKEN" } },
     "no-infra": { required: [], secrets: [], tofuEnv: {} },
   },
   "provider-backend": {

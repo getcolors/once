@@ -15,6 +15,7 @@ import onceModule from "../resources/tools/ansible/library/once" with { type: "t
 import ansibleMain from "../resources/tools/ansible/main.yml" with { type: "text" };
 import dnsCloudflare from "../resources/tools/tofu-dns/cloudflare/main.tf" with { type: "text" };
 import dnsNoInfra from "../resources/tools/tofu-dns/no-infra/main.tf" with { type: "text" };
+import dnsYandex from "../resources/tools/tofu-dns/yandex/main.tf" with { type: "text" };
 import smtpPostNoInfra from "../resources/tools/tofu-smtp-post/no-infra/main.tf" with { type: "text" };
 import smtpPostResend from "../resources/tools/tofu-smtp-post/resend/main.tf" with { type: "text" };
 import smtpNoInfra from "../resources/tools/tofu-smtp/no-infra/main.tf" with { type: "text" };
@@ -49,6 +50,7 @@ const smtpTemplates: Record<string, Template> = {
 };
 const dnsTemplates: Record<string, Template> = {
   cloudflare: { name: "tools/tofu-dns/cloudflare/main.tf", content: dnsCloudflare },
+  yandex: { name: "tools/tofu-dns/yandex/main.tf", content: dnsYandex },
   "no-infra": { name: "tools/tofu-dns/no-infra/main.tf", content: dnsNoInfra },
 };
 const smtpPostTemplates: Record<string, Template> = {
@@ -174,24 +176,66 @@ function cloudflareZoneId(zone: string): string {
   return `\${data.cloudflare_zone.domains[${JSON.stringify(zone)}].id}`;
 }
 
+function yandexZoneId(zone: string): string {
+  return `\${yandex_dns_zone.domains[${JSON.stringify(zone)}].id}`;
+}
+
+// Yandex record names and targets are absolute; without the trailing dot the
+// API would read them as relative to the zone.
+function yandexFqdn(s: unknown): string {
+  const value = String(s);
+  return value.endsWith(".") ? value : `${value}.`;
+}
+
+// DNS provider -> the record resource its generated .tf.json files declare.
+// A provider absent here (no-infra) gets no generated records at all.
+const dnsRecordResources: Record<string, string> = {
+  cloudflare: "cloudflare_dns_record",
+  yandex: "yandex_dns_recordset",
+};
+
+function appRecord(provider: string, ip: unknown, host: string): Record<string, unknown> {
+  const zone = registrableDomain(host)!;
+  if (provider === "cloudflare") {
+    return { zone_id: cloudflareZoneId(zone), name: host, content: ip, type: "A", proxied: true, ttl: 1 };
+  }
+  // Yandex has no proxy: the record resolves straight to the server.
+  return { zone_id: yandexZoneId(zone), name: yandexFqdn(host), type: "A", ttl: 300, data: [ip] };
+}
+
+function smtpRecord(provider: string, zone: string, record: any): Record<string, unknown> {
+  if (provider === "cloudflare") {
+    return {
+      zone_id: cloudflareZoneId(zone), name: record.name, ttl: "1", type: record.type,
+      proxied: false,
+      ...(record.type === "TXT" ? { content: `\"${record.value}\"` } : {}),
+      ...(record.type === "MX" ? { priority: record.priority, content: record.value } : {}),
+    };
+  }
+  // Yandex recordsets carry everything in data — the MX priority is part of
+  // the value, and TXT values are quoted like a zone file.
+  const data = record.type === "TXT" ? `"${record.value}"`
+    : record.type === "MX" ? `${record.priority} ${yandexFqdn(record.value)}`
+    : record.value;
+  return { zone_id: yandexZoneId(zone), name: yandexFqdn(record.name), ttl: 300, type: record.type, data: [data] };
+}
+
 export function renderFn(source: "apps" | "smtp", data: any): string {
+  const provider = String(data.provider ?? "cloudflare");
+  const resource = dnsRecordResources[provider]!;
   if (source === "apps") {
+    // One A record per application host — proxied on Cloudflare, plain on
+    // Yandex. There is no implicit apex or wildcard record: only the hosts
+    // desired state names resolve to the server.
     return tofu.constructsJson((data.applications ?? []).map((app: any) =>
-      tofu.construct("resource", "cloudflare_dns_record", addFqnSuffix("io.github.getcolors.once.tools/app-dns", `-${app.host}`), {
-        zone_id: cloudflareZoneId(registrableDomain(app.host)!), name: app.host, content: data.ip,
-        type: "A", proxied: true, ttl: 1,
-      })));
+      tofu.construct("resource", resource, addFqnSuffix("io.github.getcolors.once.tools/app-dns", `-${app.host}`),
+        appRecord(provider, data.ip, app.host))));
   }
   return tofu.constructsJson((data.domains ?? []).flatMap((domain: any) =>
     (domain.records ?? []).map((record: any) => tofu.construct(
-      "resource", "cloudflare_dns_record",
+      "resource", resource,
       addFqnSuffix("io.github.getcolors.once.tools/smtp-dns", `-${domain.zone}-${record.record}-${record.type}`),
-      {
-        zone_id: cloudflareZoneId(domain.zone), name: record.name, ttl: "1", type: record.type,
-        proxied: false,
-        ...(record.type === "TXT" ? { content: `\"${record.value}\"` } : {}),
-        ...(record.type === "MX" ? { priority: record.priority, content: record.value } : {}),
-      },
+      smtpRecord(provider, domain.zone, record),
     )),
   ));
 }
@@ -208,11 +252,11 @@ export function tofuDnsStep(original: Opts): Promise<Opts> {
   const provider = String(opts["provider-dns"] ?? "cloudflare");
   const dir = toolDir(opts, "tofu-dns");
   const specs: Spec[] = [templateSpec(dnsTemplates[provider]!, `${dir}/main.tf`, opts)];
-  if (provider === "cloudflare") {
+  if (provider in dnsRecordResources) {
     const apps = (opts.once as any)?.applications;
     specs.push(
-      rawSpec(`${dir}/apps.tf.json`, renderFn("apps", { applications: apps, ip: opts.ip })),
-      rawSpec(`${dir}/smtp.tf.json`, renderFn("smtp", { domains: opts.domains })),
+      rawSpec(`${dir}/apps.tf.json`, renderFn("apps", { provider, applications: apps, ip: opts.ip })),
+      rawSpec(`${dir}/smtp.tf.json`, renderFn("smtp", { provider, domains: opts.domains })),
     );
   }
   return tofuWithSpecs(opts, dir, specs, {}, undefined, credentialEnv(opts, "provider-dns"));

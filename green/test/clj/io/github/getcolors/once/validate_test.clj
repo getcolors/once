@@ -42,7 +42,14 @@
       (is (not-any? #(str/includes? % ":oci-") errors))))
 
   (testing "resend needs no non-secret keys — its relay is hard-coded"
-    (is (= [] (sut/state-errors (assoc valid :provider-smtp "resend"))))))
+    (is (= [] (sut/state-errors (assoc valid :provider-smtp "resend")))))
+
+  (testing "yandex DNS asks for the cloud and folder, not the compute keys"
+    (let [errors (sut/state-errors (assoc valid :provider-dns "yandex"))]
+      (is (some #(str/includes? % ":yandex-cloud-id") errors))
+      (is (some #(str/includes? % ":yandex-folder-id") errors))
+      (is (not-any? #(str/includes? % ":yandex-zone") errors))
+      (is (not-any? #(str/includes? % ":compute-pubkey") errors)))))
 
 (deftest placeholders-count-as-missing
   (doseq [v [nil "" "   " "REPLACE_ME" "replace_me"]]
@@ -124,6 +131,13 @@
     (is (= ["required credential is not set: COLORS_PAR_YANDEX_TOKEN"]
            (sut/secret-errors (assoc valid
                                      :provider-compute "yandex"
+                                     :no-infra-smtp-password "pw")))))
+
+  (testing "yandex compute and DNS share the token, and demand it once"
+    (is (= ["required credential is not set: COLORS_PAR_YANDEX_TOKEN"]
+           (sut/secret-errors (assoc valid
+                                     :provider-compute "yandex"
+                                     :provider-dns "yandex"
                                      :no-infra-smtp-password "pw")))))
 
   (testing "oci and the local backend need no credential of their own"

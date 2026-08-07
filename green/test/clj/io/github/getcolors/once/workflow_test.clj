@@ -225,6 +225,23 @@
       (finally
         (delete-tree! workdir)))))
 
+(deftest a-build-with-yandex-dns-renders-the-generated-records
+  (let [workdir (temp-dir)]
+    (try
+      (let [result (wf/run sut/workflow (assoc valid
+                                               :workdir workdir
+                                               :provider-dns "yandex"
+                                               :yandex-cloud-id "cloud-id"
+                                               :yandex-folder-id "folder-id"
+                                               :green/event :build))
+            dns (io/file (tools/tool-dir {:workdir workdir :profile "test"} "tofu-dns"))]
+        (is (= 0 (:green/exit result)) (:green/err result))
+        (is (str/includes? (slurp (io/file dns "main.tf")) "yandex_dns_zone"))
+        (is (.exists (io/file dns "apps.tf.json")))
+        (is (.exists (io/file dns "smtp.tf.json"))))
+      (finally
+        (delete-tree! workdir)))))
+
 (deftest a-build-with-no-infra-dns-renders-no-generated-records
   (let [workdir (temp-dir)]
     (try

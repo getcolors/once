@@ -43,6 +43,24 @@ def test_zones_and_generated_application_dns_records():
     assert list(rendered["resource"]["cloudflare_dns_record"].values()) == [{"content": "203.0.113.10", "name": "www.example.com", "proxied": True, "ttl": 1, "type": "A", "zone_id": '${data.cloudflare_zone.domains["example.com"].id}'}]
 
 
+def test_yandex_dns_records_are_absolute_unproxied_and_carry_mx_priority_in_data():
+    apps = json.loads(render_fn("apps", {"provider": "yandex", "ip": "203.0.113.10", "applications": [{"host": "www.example.com"}]}))
+    assert list(apps["resource"]["yandex_dns_recordset"].values()) == [
+        {"data": ["203.0.113.10"], "name": "www.example.com.", "ttl": 300, "type": "A", "zone_id": '${yandex_dns_zone.domains["example.com"].id}'}
+    ]
+    smtp = json.loads(render_fn("smtp", {
+        "provider": "yandex",
+        "domains": [{"zone": "example.com", "records": [
+            {"name": "send.example.com", "record": "send", "type": "MX", "priority": 10, "value": "feedback-smtp.eu-west-1.amazonses.com"},
+            {"name": "send.example.com", "record": "send", "type": "TXT", "value": "v=spf1 include:amazonses.com ~all"},
+        ]}],
+    }))
+    records = list(smtp["resource"]["yandex_dns_recordset"].values())
+    assert [record["data"] for record in records] == [["10 feedback-smtp.eu-west-1.amazonses.com."], ['"v=spf1 include:amazonses.com ~all"']]
+    assert all(record["name"] == "send.example.com." for record in records)
+    assert any("yandex-cloud-id" in error for error in state_errors({**valid, "provider-dns": "yandex"}))
+
+
 def test_ansible_rendering_defers_secrets_and_is_color_portable():
     rendered = ansible_once(
         {

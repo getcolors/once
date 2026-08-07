@@ -795,14 +795,14 @@ COLORS_PAR_DIGITALOCEAN_SIZE=s-2vcpu-2gb ./green create --dry-run</code></pre>
         <li>The work directory is generated output and should be ignored by Git.</li>
         <li>Local OpenTofu state remains in each tool directory. S3 and R2 use remote keys of the form <code>&lt;profile&gt;/&lt;tool&gt;.tfstate</code>.</li>
         <li>Generated Ansible files contain environment lookups, not application or SMTP secret values — provided each application's <code>env</code> uses the map form, which is the one that defers to a <code>COLORS_PAR_*</code> lookup.</li>
-        <li><code>apps.tf.json</code> and <code>smtp.tf.json</code> are generated only for the Cloudflare DNS provider; <code>no-infra</code> renders <code>main.tf</code> alone.</li>
+        <li><code>apps.tf.json</code> and <code>smtp.tf.json</code> are generated for the Cloudflare and Yandex DNS providers; <code>no-infra</code> renders <code>main.tf</code> alone.</li>
         <li>The <code>ansible-local</code> play writes a managed <code>Host &lt;profile&gt;</code> block into <code>~/.ssh/config</code>, delimited by its own markers. Delete removes that block and leaves the rest of the file untouched.</li>
       </ul>
     </section>
 
     <section id="applications">
       <h2 class="anchor-heading"><a href="#applications" aria-label="Link to Applications">#</a>Applications</h2>
-      <p>Applications live in <code>once {:applications [...]}</code>. Every application requires a hostname and a container image. Hostnames may span domains. Green derives every DNS zone from the hostname's last two labels, creates a matching Resend sending domain, and assigns each application a From address in its own zone. Each hostname gets its own proxied A record. No implicit apex or wildcard record is created, so a hostname that is not listed here does not resolve.</p>
+      <p>Applications live in <code>once {:applications [...]}</code>. Every application requires a hostname and a container image. Hostnames may span domains. Green derives every DNS zone from the hostname's last two labels, creates a matching Resend sending domain, and assigns each application a From address in its own zone. Each hostname gets its own A record — proxied on Cloudflare, plain on Yandex. No implicit apex or wildcard record is created, so a hostname that is not listed here does not resolve.</p>
       <pre><code class="language-yaml">once:
   applications:
     - host: www.example.com
@@ -953,7 +953,7 @@ hcloud-ssh-keys: key-name-or-id-already-in-the-project</code></pre>
 compute-pubkey: ssh-ed25519 AAAA... operator
 yandex-cloud-id: b1g...
 yandex-folder-id: b1g...
-yandex-zone: ru-central1-a
+yandex-zone: kz1-a
 yandex-image-family: ubuntu-2404-lts
 yandex-name: once
 yandex-subnet-cidr: 10.0.0.0/24
@@ -1015,7 +1015,12 @@ no-infra-smtp-username: smtp-user</code></pre>
         <article class="card">
           <p class="label">Managed</p>
           <h3><code>cloudflare</code></h3>
-          <p>Finds every zone derived from the application hostnames, creates a proxied A record for each hostname in its zone, and adds each sending domain's unproxied Resend records. Requires <code>COLORS_PAR_CLOUDFLARE_API_TOKEN</code> with zone-read and DNS-edit access to every zone.</p>
+          <p>Finds every zone derived from the application hostnames, creates a proxied A record for each hostname in its zone, and adds each sending domain's unproxied Resend records. Every zone must already exist in the account. Requires <code>COLORS_PAR_CLOUDFLARE_API_TOKEN</code> with zone-read and DNS-edit access to every zone.</p>
+        </article>
+        <article class="card">
+          <p class="label">Managed</p>
+          <h3><code>yandex</code></h3>
+          <p>Creates a public Yandex Cloud DNS zone for every domain derived from the application hostnames, an A record for each hostname (records are not proxied), and each sending domain's Resend records. Delegate each domain once at its registrar to <code>ns1.yandexcloud.net</code> and <code>ns2.yandexcloud.net</code>. Requires <code>yandex-cloud-id</code>, <code>yandex-folder-id</code>, and <code>COLORS_PAR_YANDEX_TOKEN</code> — the same token Yandex compute uses.</p>
         </article>
         <article class="card">
           <p class="label">External</p>
@@ -1023,7 +1028,7 @@ no-infra-smtp-username: smtp-user</code></pre>
           <p>Creates no DNS resources and requires no DNS credential. You are responsible for application and SMTP records outside Once.</p>
         </article>
       </div>
-      <pre><code class="language-yaml">provider-dns: cloudflare  # or "no-infra"</code></pre>
+      <pre><code class="language-yaml">provider-dns: cloudflare  # or "yandex", "no-infra"</code></pre>
     </section>
 
     <section id="state-backends">
@@ -1421,10 +1426,13 @@ jobs:
       <p>Use the same <code>profile</code>, <code>workdir</code>, backend selection, and backend credentials used during create. Do not delete the local work directory when using local state.</p>
 
       <h3>Resend verification is delayed</h3>
-      <p>Confirm Cloudflare received all unproxied Resend records and allow DNS propagation. Rerun create after the records are visible; OpenTofu will continue from existing state.</p>
+      <p>Confirm the DNS provider received all Resend records and allow DNS propagation. Rerun create after the records are visible; OpenTofu will continue from existing state.</p>
 
       <h3>Cloudflare cannot find the zone</h3>
       <p>Every domain derived from the application hostnames must already belong to a zone accessible by <code>COLORS_PAR_CLOUDFLARE_API_TOKEN</code>. The token needs permission to read and edit DNS records in every zone.</p>
+
+      <h3>A Yandex zone exists but the domain does not resolve</h3>
+      <p>Once creates the public zone, but serving traffic requires delegation: set the domain's NS records at its registrar to <code>ns1.yandexcloud.net</code> and <code>ns2.yandexcloud.net</code>, then allow propagation. Resend verification also waits on this delegation.</p>
 
       <h3>An existing server fails during create</h3>
       <p>Verify direct SSH access with <code>no-infra-compute-user</code>, passwordless privilege escalation for <code>no-infra-compute-sudoer</code>, a supported Linux host, and outbound network access for installers.</p>
@@ -1479,7 +1487,7 @@ r2-endpoint: https://ACCOUNT_ID.r2.cloudflarestorage.com</code></pre>
             <tr><td><code>once</code></td><td>Yes</td><td>Map containing a non-empty <code>applications</code> vector. Each application takes <code>host</code>, <code>image</code>, an optional <code>github</code> repository, and an optional <code>env</code> map.</td></tr>
             <tr><td><code>provider-compute</code></td><td>Yes</td><td><code>azure</code>, <code>aws</code>, <code>google</code>, <code>digitalocean</code>, <code>hcloud</code>, <code>yandex</code>, <code>oci</code>, or <code>no-infra</code>.</td></tr>
             <tr><td><code>provider-smtp</code></td><td>Yes</td><td><code>resend</code> or <code>no-infra</code>.</td></tr>
-            <tr><td><code>provider-dns</code></td><td>Yes</td><td><code>cloudflare</code> or <code>no-infra</code>.</td></tr>
+            <tr><td><code>provider-dns</code></td><td>Yes</td><td><code>cloudflare</code>, <code>yandex</code>, or <code>no-infra</code>.</td></tr>
             <tr><td><code>provider-backend</code></td><td>Yes</td><td><code>local</code>, <code>s3</code>, or <code>r2</code>.</td></tr>
             <tr><td><code>compute-prevent-destroy</code></td><td>Yes</td><td>Boolean destruction guard; keep <code>true</code> in committed state.</td></tr>
           </tbody>
@@ -1501,6 +1509,7 @@ r2-endpoint: https://ACCOUNT_ID.r2.cloudflarestorage.com</code></pre>
             <tr><td>Existing compute</td><td><code>no-infra-compute-ip</code>, <code>no-infra-compute-user</code>, <code>no-infra-compute-sudoer</code>, <code>no-infra-compute-uid</code></td></tr>
             <tr><td>Resend</td><td>None — the relay is hard-coded</td></tr>
             <tr><td>Existing SMTP</td><td><code>no-infra-smtp-server</code>, <code>no-infra-smtp-port</code>, <code>no-infra-smtp-username</code></td></tr>
+            <tr><td>Yandex DNS</td><td><code>yandex-cloud-id</code>, <code>yandex-folder-id</code></td></tr>
             <tr><td>S3 backend</td><td><code>s3-bucket</code>, <code>s3-region</code></td></tr>
             <tr><td>R2 backend</td><td><code>r2-bucket</code>, <code>r2-endpoint</code></td></tr>
           </tbody>

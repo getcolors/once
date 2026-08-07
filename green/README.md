@@ -90,7 +90,7 @@ once:
       github: acme/site      # same repository as www.example.com: one key, both hosts
 provider-compute: digitalocean  # azure, aws, google, digitalocean, hcloud, yandex, oci, no-infra
 provider-smtp: resend           # resend, no-infra
-provider-dns: cloudflare        # cloudflare, no-infra
+provider-dns: cloudflare        # cloudflare, yandex, no-infra
 provider-backend: r2            # r2, s3, local
 compute-prevent-destroy: true
 ```
@@ -102,8 +102,9 @@ There is no domain key. Application hosts are the source of truth and may span
 domains. Green derives every DNS zone from each host's last two labels, creates
 and verifies a Resend sending domain at `notifications.<zone>`, and gives each
 application an `info@notifications.<zone>` From address in its own zone. Each
-host gets its own proxied `A` record — there is no implicit apex or wildcard
-record, so an unlisted host does not resolve.
+host gets its own `A` record — proxied on Cloudflare, plain on Yandex — and
+there is no implicit apex or wildcard record, so an unlisted host does not
+resolve.
 
 `env` maps a container variable **name** to the flat key holding its value,
 never to the value itself.

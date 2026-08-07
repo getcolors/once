@@ -23,7 +23,7 @@ def _template(path: str) -> dict:
 _RAW = _template("raw")
 _COMPUTE = {name: _template(f"tools/tofu/{name}/main.tf") for name in ["azure", "aws", "digitalocean", "google", "hcloud", "yandex", "oci", "no-infra"]}
 _SMTP = {name: _template(f"tools/tofu-smtp/{name}/main.tf") for name in ["resend", "no-infra"]}
-_DNS = {name: _template(f"tools/tofu-dns/{name}/main.tf") for name in ["cloudflare", "no-infra"]}
+_DNS = {name: _template(f"tools/tofu-dns/{name}/main.tf") for name in ["cloudflare", "yandex", "no-infra"]}
 _SMTP_POST = {name: _template(f"tools/tofu-smtp-post/{name}/main.tf") for name in ["resend", "no-infra"]}
 
 
@@ -129,22 +129,68 @@ def _zone_id(zone: str) -> str:
     return '${data.cloudflare_zone.domains[' + json.dumps(zone) + "].id}"
 
 
+def _yandex_zone_id(zone: str) -> str:
+    return "${yandex_dns_zone.domains[" + json.dumps(zone) + "].id}"
+
+
+def _yandex_fqdn(s: object) -> str:
+    """Yandex record names and targets are absolute; without the trailing dot
+    the API would read them as relative to the zone."""
+    value = str(s)
+    return value if value.endswith(".") else f"{value}."
+
+
+# DNS provider -> the record resource its generated .tf.json files declare.
+# A provider absent here (no-infra) gets no generated records at all.
+_DNS_RECORD_RESOURCES = {
+    "cloudflare": "cloudflare_dns_record",
+    "yandex": "yandex_dns_recordset",
+}
+
+
+def _app_record(provider: str, ip: object, host: str) -> dict:
+    zone = registrable_domain(host)
+    if provider == "cloudflare":
+        return {"zone_id": _zone_id(zone), "name": host, "content": ip, "type": "A", "proxied": True, "ttl": 1}
+    # Yandex has no proxy: the record resolves straight to the server.
+    return {"zone_id": _yandex_zone_id(zone), "name": _yandex_fqdn(host), "type": "A", "ttl": 300, "data": [ip]}
+
+
+def _smtp_record(provider: str, zone: str, record: dict) -> dict:
+    if provider == "cloudflare":
+        block = {"zone_id": _zone_id(zone), "name": record.get("name"), "ttl": "1", "type": record.get("type"), "proxied": False}
+        if record.get("type") == "TXT":
+            block["content"] = f'"{record.get("value")}"'
+        if record.get("type") == "MX":
+            block.update({"priority": record.get("priority"), "content": record.get("value")})
+        return block
+    # Yandex recordsets carry everything in data — the MX priority is part of
+    # the value, and TXT values are quoted like a zone file.
+    if record.get("type") == "TXT":
+        data = f'"{record.get("value")}"'
+    elif record.get("type") == "MX":
+        data = f"{record.get('priority')} {_yandex_fqdn(record.get('value'))}"
+    else:
+        data = record.get("value")
+    return {"zone_id": _yandex_zone_id(zone), "name": _yandex_fqdn(record.get("name")), "ttl": 300, "type": record.get("type"), "data": [data]}
+
+
 def render_fn(source: str, data: dict) -> str:
+    provider = str(data.get("provider") or "cloudflare")
+    resource = _DNS_RECORD_RESOURCES[provider]
     if source == "apps":
+        # One A record per application host — proxied on Cloudflare, plain on
+        # Yandex. There is no implicit apex or wildcard record: only the hosts
+        # desired state names resolve to the server.
         return tofu.constructs_json([
-            tofu.construct("resource", "cloudflare_dns_record", _add_suffix("io.github.getcolors.once.tools/app-dns", f"-{app['host']}"), {
-                "zone_id": _zone_id(registrable_domain(app["host"])), "name": app["host"], "content": data.get("ip"), "type": "A", "proxied": True, "ttl": 1,
-            }) for app in data.get("applications", [])
+            tofu.construct("resource", resource, _add_suffix("io.github.getcolors.once.tools/app-dns", f"-{app['host']}"),
+                           _app_record(provider, data.get("ip"), app["host"]))
+            for app in data.get("applications", [])
         ])
     constructs = []
     for domain in data.get("domains", []):
         for record in domain.get("records", []):
-            block = {"zone_id": _zone_id(domain["zone"]), "name": record.get("name"), "ttl": "1", "type": record.get("type"), "proxied": False}
-            if record.get("type") == "TXT":
-                block["content"] = f'"{record.get("value")}"'
-            if record.get("type") == "MX":
-                block.update({"priority": record.get("priority"), "content": record.get("value")})
-            constructs.append(tofu.construct("resource", "cloudflare_dns_record", _add_suffix("io.github.getcolors.once.tools/smtp-dns", f"-{domain['zone']}-{record.get('record')}-{record.get('type')}"), block))
+            constructs.append(tofu.construct("resource", resource, _add_suffix("io.github.getcolors.once.tools/smtp-dns", f"-{domain['zone']}-{record.get('record')}-{record.get('type')}"), _smtp_record(provider, domain["zone"], record)))
     return tofu.constructs_json(constructs)
 
 
@@ -160,8 +206,8 @@ async def tofu_dns_step(original: dict) -> dict:
     provider = str(opts.get("provider-dns") or "cloudflare")
     dir = tool_dir(opts, "tofu-dns")
     specs = [_spec(_DNS[provider], f"{dir}/main.tf", opts)]
-    if provider == "cloudflare":
-        specs += [_raw_spec(f"{dir}/apps.tf.json", render_fn("apps", {"applications": (opts.get("once") or {}).get("applications", []), "ip": opts.get("ip")})), _raw_spec(f"{dir}/smtp.tf.json", render_fn("smtp", {"domains": opts.get("domains", [])}))]
+    if provider in _DNS_RECORD_RESOURCES:
+        specs += [_raw_spec(f"{dir}/apps.tf.json", render_fn("apps", {"provider": provider, "applications": (opts.get("once") or {}).get("applications", []), "ip": opts.get("ip")})), _raw_spec(f"{dir}/smtp.tf.json", render_fn("smtp", {"provider": provider, "domains": opts.get("domains", [])}))]
     return await _tofu_with_specs(opts, dir, specs, {}, None, _credential_env(opts, "provider-dns"))
 
 

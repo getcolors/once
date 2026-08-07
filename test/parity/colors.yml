@@ -67,7 +67,7 @@ hcloud-ssh-keys: key-id
 compute-pubkey: ssh-ed25519 AAAAEXAMPLE operator
 yandex-cloud-id: cloud
 yandex-folder-id: folder
-yandex-zone: ru-central1-a
+yandex-zone: kz1-a
 yandex-image-family: ubuntu-2404-lts
 yandex-name: once
 yandex-subnet-cidr: 10.0.0.0/24

@@ -42,7 +42,7 @@ green/
 │       └── tools/
 │           ├── tofu/{digitalocean,hcloud,yandex,oci,no-infra}/main.tf
 │           ├── tofu-smtp/{resend,no-infra}/main.tf
-│           ├── tofu-dns/{cloudflare,no-infra}/main.tf
+│           ├── tofu-dns/{cloudflare,yandex,no-infra}/main.tf
 │           ├── tofu-smtp-post/{resend,no-infra}/main.tf
 │           ├── ansible/            # remote host: playbook, ansible.cfg, files/deploy, library/once
 │           └── ansible-local/      # local machine: playbook, ansible.cfg, inventory.ini
@@ -100,15 +100,15 @@ once:
         DATABASE_URL: app-database-url
 provider-compute: digitalocean  # digitalocean | hcloud | oci | no-infra
 provider-smtp: resend           # resend | no-infra
-provider-dns: cloudflare        # cloudflare | no-infra
+provider-dns: cloudflare        # cloudflare | yandex | no-infra
 provider-backend: r2            # local | s3 | r2
 compute-prevent-destroy: true
 ```
 
 Load-bearing rules:
 
-- **No domain key.** Application hosts are the source of truth and may span domains. `utils/apps-domains` derives the sorted distinct zones from their last two labels. The SMTP stage creates `notifications.<zone>` for every zone, Cloudflare manages every zone, and each application gets the matching `info@notifications.<zone>` From address. Templates read HCL-encoded derived zone collections injected by `tools/with-zones` — nothing in desired state supplies them.
-- **No apex or wildcard DNS record.** Each application host gets its own proxied `A` record, so an unlisted host does not resolve.
+- **No domain key.** Application hosts are the source of truth and may span domains. `utils/apps-domains` derives the sorted distinct zones from their last two labels. The SMTP stage creates `notifications.<zone>` for every zone, the DNS provider manages every zone, and each application gets the matching `info@notifications.<zone>` From address. Templates read HCL-encoded derived zone collections injected by `tools/with-zones` — nothing in desired state supplies them.
+- **No apex or wildcard DNS record.** Each application host gets its own `A` record (proxied on Cloudflare, plain on Yandex), so an unlisted host does not resolve.
 - **Resend's relay is hard-coded** (`smtp.resend.com`, 587, user `resend`) in `tools/resend-smtp`, because it is identical for every account. Only `COLORS_PAR_RESEND_API_KEY` and `COLORS_PAR_RESEND_PASSWORD` are configurable. The `no-infra` SMTP keys stay in desired state.
 - **Environment parameters are the only secret channel.** `COLORS_PAR_*` — one namespace shared by green, red and blue — overlays matching flat keys. There is no per-colour prefix and no portable alias. Overrides retain existing boolean/integer types. There is no `TF_VAR_*` mechanism.
 - Application `env` maps a container variable **name** to the flat key holding its value, never to the value itself.
@@ -185,7 +185,7 @@ A `build` of the reference `colors.yml` produces exactly:
                       library/once
 ```
 
-The two generated DNS files are Cloudflare-only; `no-infra` DNS renders `main.tf` alone.
+The two generated DNS files are rendered for Cloudflare and Yandex; `no-infra` DNS renders `main.tf` alone.
 
 ### Parameter flow
 

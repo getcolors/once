@@ -99,7 +99,7 @@ r2-endpoint: REPLACE_ME
 
 yandex-cloud-id: REPLACE_ME
 yandex-folder-id: REPLACE_ME
-yandex-zone: ru-central1-a
+yandex-zone: kz1-a
 yandex-image-family: ubuntu-2404-lts
 yandex-name: once
 yandex-subnet-cidr: 10.0.0.0/24

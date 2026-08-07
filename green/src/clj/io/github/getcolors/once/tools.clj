@@ -193,38 +193,84 @@
   [zone]
   (format "${data.cloudflare_zone.domains[%s].id}" (pr-str zone)))
 
+(defn- yandex-zone-id
+  [zone]
+  (format "${yandex_dns_zone.domains[%s].id}" (pr-str zone)))
+
+(defn- yandex-fqdn
+  "Yandex record names and targets are absolute; without the trailing dot the
+  API would read them as relative to the zone."
+  [s]
+  (cond-> (str s)
+    (not (str/ends-with? (str s) ".")) (str ".")))
+
+(def ^:private dns-record-resources
+  "DNS provider -> the record resource its generated .tf.json files declare.
+  A provider absent here (no-infra) gets no generated records at all."
+  {"cloudflare" :cloudflare_dns_record
+   "yandex" :yandex_dns_recordset})
+
+(defn- app-record
+  [provider ip host]
+  (let [zone (utils/registrable-domain host)]
+    (case provider
+      "cloudflare" {:zone_id (cloudflare-zone-id zone)
+                    :name host
+                    :content ip
+                    :type "A"
+                    :proxied true
+                    :ttl 1}
+      ;; Yandex has no proxy: the record resolves straight to the server.
+      "yandex" {:zone_id (yandex-zone-id zone)
+                :name (yandex-fqdn host)
+                :type "A"
+                :ttl 300
+                :data [ip]})))
+
+(defn- smtp-record
+  [provider zone {:keys [name priority type value]}]
+  (case provider
+    "cloudflare" (cond-> {:zone_id (cloudflare-zone-id zone)
+                          :name name
+                          :ttl "1"
+                          :type type
+                          :proxied false}
+                   (= type "TXT") (merge {:content (format "\"%s\"" value)})
+                   (= type "MX") (merge {:priority priority
+                                         :content value}))
+    ;; Yandex recordsets carry everything in :data — the MX priority is part
+    ;; of the value, and TXT values are quoted like a zone file.
+    "yandex" {:zone_id (yandex-zone-id zone)
+              :name (yandex-fqdn name)
+              :ttl 300
+              :type type
+              :data [(case type
+                       "TXT" (format "\"%s\"" value)
+                       "MX" (format "%s %s" priority (yandex-fqdn value))
+                       value)]}))
+
 (defn render-fn
-  [src {:keys [domains applications ip]}]
-  (case src
-    ;; One proxied A record per application host. There is no implicit apex or
-    ;; wildcard record: only the hosts desired state names resolve to the server.
-    :apps (tofu/constructs-json
-           (for [{:keys [host]} applications
-                 :let [zone (utils/registrable-domain host)]]
-             (tofu/construct :resource
-                             :cloudflare_dns_record
-                             (add-fqn-suffix ::app-dns (str "-" host))
-                             {:zone_id (cloudflare-zone-id zone)
-                              :name host
-                              :content ip
-                              :type "A"
-                              :proxied true
-                              :ttl 1})))
-    :smtp (tofu/constructs-json
-           (for [{:keys [zone records]} domains
-                 {:keys [name priority record type value]} records]
-             (tofu/construct :resource
-                             :cloudflare_dns_record
-                             (add-fqn-suffix ::smtp-dns
-                                             (format "-%s-%s-%s" zone record type))
-                             (cond-> {:zone_id (cloudflare-zone-id zone)
-                                      :name name
-                                      :ttl "1"
-                                      :type type
-                                      :proxied false}
-                               (= type "TXT") (merge {:content (format "\"%s\"" value)})
-                               (= type "MX") (merge {:priority priority
-                                                     :content value})))))))
+  [src {:keys [provider domains applications ip]}]
+  (let [provider (or provider "cloudflare")
+        resource (dns-record-resources provider)]
+    (case src
+      ;; One A record per application host — proxied on Cloudflare, plain on
+      ;; Yandex. There is no implicit apex or wildcard record: only the hosts
+      ;; desired state names resolve to the server.
+      :apps (tofu/constructs-json
+             (for [{:keys [host]} applications]
+               (tofu/construct :resource
+                               resource
+                               (add-fqn-suffix ::app-dns (str "-" host))
+                               (app-record provider ip host))))
+      :smtp (tofu/constructs-json
+             (for [{:keys [zone records]} domains
+                   {:keys [record type] :as r} records]
+               (tofu/construct :resource
+                               resource
+                               (add-fqn-suffix ::smtp-dns
+                                               (format "-%s-%s-%s" zone record type))
+                               (smtp-record provider zone r)))))))
 
 (defn- joined-params
   [opts]
@@ -248,12 +294,14 @@
         specs (cond-> [(template-spec (tool-template "tofu-dns" provider "main.tf")
                                       (str dir "/main.tf")
                                       opts)]
-                (= provider "cloudflare")
+                (contains? dns-record-resources provider)
                 (conj (raw-spec (str dir "/apps.tf.json")
-                                (render-fn :apps {:applications (get-in opts [:once :applications])
+                                (render-fn :apps {:provider provider
+                                                  :applications (get-in opts [:once :applications])
                                                   :ip (:ip opts)}))
                       (raw-spec (str dir "/smtp.tf.json")
-                                (render-fn :smtp {:domains (:domains opts)}))))]
+                                (render-fn :smtp {:provider provider
+                                                  :domains (:domains opts)}))))]
     (tofu-with-spec opts dir specs {} nil
                     (credential-env opts :provider-dns))))
 

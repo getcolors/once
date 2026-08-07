@@ -57,6 +57,24 @@ test("zones and generated application DNS records", () => {
   expect(records).toEqual([{ content: "203.0.113.10", name: "www.example.com", proxied: true, ttl: 1, type: "A", zone_id: '${data.cloudflare_zone.domains["example.com"].id}' }]);
 });
 
+test("yandex DNS records are absolute, unproxied, and carry MX priority in data", () => {
+  const apps = JSON.parse(renderFn("apps", { provider: "yandex", ip: "203.0.113.10", applications: [{ host: "www.example.com" }] }));
+  expect(Object.values(apps.resource.yandex_dns_recordset)).toEqual([
+    { data: ["203.0.113.10"], name: "www.example.com.", ttl: 300, type: "A", zone_id: '${yandex_dns_zone.domains["example.com"].id}' },
+  ]);
+  const smtp = JSON.parse(renderFn("smtp", {
+    provider: "yandex",
+    domains: [{ zone: "example.com", records: [
+      { name: "send.example.com", record: "send", type: "MX", priority: 10, value: "feedback-smtp.eu-west-1.amazonses.com" },
+      { name: "send.example.com", record: "send", type: "TXT", value: "v=spf1 include:amazonses.com ~all" },
+    ] }],
+  }));
+  const records = Object.values(smtp.resource.yandex_dns_recordset) as any[];
+  expect(records.map((record) => record.data)).toEqual([["10 feedback-smtp.eu-west-1.amazonses.com."], ['"v=spf1 include:amazonses.com ~all"']]);
+  expect(records.every((record) => record.name === "send.example.com.")).toBe(true);
+  expect(stateErrors({ ...valid, "provider-dns": "yandex" }).join(" ")).toMatch(/yandex-cloud-id/);
+});
+
 test("Ansible rendering defers secrets and is color-portable", () => {
   const yaml = ansibleOnce({
     "provider-smtp": "resend",
