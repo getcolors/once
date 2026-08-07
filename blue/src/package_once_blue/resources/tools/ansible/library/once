@@ -12,6 +12,11 @@
 ;;; Reconciles the desired list of ONCE applications against `once list`.
 ;;; Deploys apps that are missing; removes apps that are no longer wanted.
 ;;;
+;;; Honors check mode: under `ansible-playbook --check` the only command
+;;; executed is `once list`; the reconciliation is reported as would_deploy and
+;;; would_remove instead of being applied. Ansible does not skip WANT_JSON
+;;; modules in check mode, so the module has to enforce this itself.
+;;;
 ;;; Parameters (JSON args file):
 ;;;   applications  - required, list of app objects
 ;;;   namespace     - optional, default "once"
@@ -98,10 +103,10 @@
   (cond-> ["once" "-n" namespace "remove" host]
     remove-data? (conj "--remove-data")))
 
-(defn reconcile [applications namespace remove-data? teardown?]
+(defn reconcile [applications namespace remove-data? teardown? check-mode?]
   (when-not (seq applications)
     (fail-json "Missing required parameter: applications"))
-  (when teardown?
+  (when (and teardown? (not check-mode?))
     (run! (cond-> ["once" "-n" namespace "teardown"]
             remove-data? (conj "--remove-data"))))
   (let [apps-by-host  (reduce (fn [a e]
@@ -111,15 +116,25 @@
         list-out      (strip-ansi (:out (run! ["once" "-n" namespace "list"])))
         deployed      (parse-deployed-hosts list-out)
         to-deploy     (set/difference desired-hosts deployed)
-        to-remove     (set/difference deployed desired-hosts)]
-    (doseq [host to-remove]
-      (run! (build-remove-cmd namespace host remove-data?)))
-    (doseq [host to-deploy]
-      (let [app (apps-by-host host)]
-        (run! (build-deploy-cmd namespace app) (app-secrets app))))
-    (exit-json {:changed (boolean (or (seq to-deploy) (seq to-remove)))
-                :deployed (vec to-deploy)
-                :removed  (vec to-remove)})))
+        to-remove     (set/difference deployed desired-hosts)
+        changed?      (boolean (or (seq to-deploy) (seq to-remove)))
+        diff          {:before (str/join "\n" (sort deployed))
+                       :after  (str/join "\n" (sort desired-hosts))}]
+    (if check-mode?
+      (exit-json {:changed changed?
+                  :would_deploy (vec (sort to-deploy))
+                  :would_remove (vec (sort to-remove))
+                  :diff diff})
+      (do
+        (doseq [host to-remove]
+          (run! (build-remove-cmd namespace host remove-data?)))
+        (doseq [host to-deploy]
+          (let [app (apps-by-host host)]
+            (run! (build-deploy-cmd namespace app) (app-secrets app))))
+        (exit-json {:changed changed?
+                    :deployed (vec to-deploy)
+                    :removed  (vec to-remove)
+                    :diff diff})))))
 
 (defn -main [& args]
   (let [args-file (first args)]
@@ -129,11 +144,13 @@
                  (-> args-file slurp (json/parse-string true))
                  (catch Exception e
                    (fail-json (str "Failed to parse args file: " (.getMessage e)))))
-          {:keys [applications namespace remove-data teardown]
+          {:keys [applications namespace remove-data teardown _ansible_check_mode]
            :or   {namespace "once"
                   remove-data false
-                  teardown false}} args]
-      (reconcile applications namespace remove-data teardown))))
+                  teardown false
+                  _ansible_check_mode false}} args]
+      (reconcile applications namespace remove-data teardown
+                 _ansible_check_mode))))
 
 (when (= *file* (System/getProperty "babashka.file"))
   (apply -main *command-line-args*))
@@ -149,5 +166,5 @@
                              :image "ghcr.io/amiorin/big-config-website"}
                             {:host "www4.bigconfig.space"
                              :image "ghcr.io/amiorin/big-config-website"}]]
-          (reconcile applications "once" false true)))))
+          (reconcile applications "once" false true false)))))
   (-> tap-values))
