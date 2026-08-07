@@ -71,7 +71,50 @@
         (is (str/includes? main "cloud_id  = \"cloud-id\""))
         (is (str/includes? main
                            "ssh-keys = \"ubuntu:ssh-ed25519 AAAATEST operator\""))
-        (is (not (str/includes? main "a-real-yandex-token"))))
+        (is (not (str/includes? main "a-real-yandex-token")))
+        (testing "an ephemeral address unless one is reserved"
+          ;; the output block always reads the instance's nat_ip_address, so
+          ;; look for the reserved-address resource and the assignment to it
+          (is (not (str/includes? main "yandex_vpc_address")))
+          (is (not (str/includes? main "nat_ip_address =")))
+          (is (not (str/includes? main "allow_stopping_for_update")))))
+      (finally
+        (delete-tree! workdir)))))
+
+(deftest yandex-reserves-an-address-when-asked
+  (let [workdir (temp-dir)
+        opts {:workdir workdir
+              :profile "test"
+              :green/event :build
+              :provider-compute "yandex"
+              :provider-backend "local"
+              :compute-prevent-destroy true
+              :compute-pubkey "ssh-ed25519 AAAATEST operator"
+              :yandex-cloud-id "cloud-id"
+              :yandex-folder-id "folder-id"
+              :yandex-zone "ru-central1-a"
+              :yandex-image-family "ubuntu-2404-lts"
+              :yandex-name "once-test"
+              :yandex-subnet-cidr "10.0.0.0/24"
+              :yandex-platform-id "standard-v3"
+              :yandex-cores 2
+              :yandex-memory-gb 2
+              :yandex-core-fraction 100
+              :yandex-disk-size-gb 20
+              :yandex-static-ip true
+              :yandex-allow-stopping-for-update true}]
+    (try
+      (let [result (tools/tofu-compute-step opts)
+            main (slurp (io/file (tools/tool-dir opts "tofu-compute") "main.tf"))]
+        (is (zero? (:green/exit result)))
+        (is (str/includes? main "resource \"yandex_vpc_address\" \"addr\""))
+        (is (str/includes? main "zone_id = \"ru-central1-a\""))
+        (testing "the instance is pinned to the reserved address"
+          (is (str/includes?
+               main
+               "nat_ip_address = yandex_vpc_address.addr.external_ipv4_address[0].address")))
+        (testing "and tofu may stop the instance to attach it"
+          (is (str/includes? main "allow_stopping_for_update = true"))))
       (finally
         (delete-tree! workdir)))))
 

@@ -76,6 +76,10 @@ yandex-cores: 2
 yandex-memory-gb: 2
 yandex-core-fraction: 100
 yandex-disk-size-gb: 20
+# Present as booleans so COLORS_PAR_* overrides are coerced to booleans: the
+# template engines agree on boolean truthiness, not on the string "false".
+yandex-static-ip: false
+yandex-allow-stopping-for-update: false
 oci-config-file-profile: DEFAULT
 oci-subnet-id: subnet
 oci-compartment-id: compartment

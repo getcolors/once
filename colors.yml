@@ -108,6 +108,12 @@ yandex-cores: 2
 yandex-memory-gb: 2
 yandex-core-fraction: 100
 yandex-disk-size-gb: 20
+# Optional. A reserved address survives stop/start, where the ephemeral NAT
+# address Yandex hands out is released when the instance stops. Stopping for
+# update is off so an apply that Yandex cannot perform in place (cores,
+# memory, platform) fails instead of taking the instance down.
+yandex-static-ip: false
+yandex-allow-stopping-for-update: false
 
 oci-config-file-profile: REPLACE_ME
 oci-subnet-id: REPLACE_ME

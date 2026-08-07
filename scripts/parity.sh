@@ -36,6 +36,12 @@ build_variant google COLORS_PAR_PROVIDER_COMPUTE=google
 build_variant digitalocean-vpc COLORS_PAR_DIGITALOCEAN_VPC_UUID=vpc-123
 build_variant hcloud COLORS_PAR_PROVIDER_COMPUTE=hcloud
 build_variant yandex COLORS_PAR_PROVIDER_COMPUTE=yandex
+# Both toggles of the reserved-address branch. The fixture carries the keys as
+# booleans so these overrides are coerced to boolean true — the three template
+# engines agree on boolean truthiness, not on the string "false".
+build_variant yandex-static COLORS_PAR_PROVIDER_COMPUTE=yandex \
+  COLORS_PAR_YANDEX_STATIC_IP=true \
+  COLORS_PAR_YANDEX_ALLOW_STOPPING_FOR_UPDATE=true
 build_variant oci COLORS_PAR_PROVIDER_COMPUTE=oci
 # Both sides of the oci-image-id branch. The unpinned side renders a data
 # source and the pinned side renders none, so a colour whose template engine

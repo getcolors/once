@@ -29,7 +29,19 @@ resource "yandex_vpc_subnet" "subnet" {
   network_id     = yandex_vpc_network.network.id
   v4_cidr_blocks = ["<{ yandex-subnet-cidr }>"]
 }
+<% if yandex-static-ip %>
+# Yandex assigns an ephemeral public address when NAT is enabled, and releases
+# it whenever the instance stops — a restart comes back on a different IP. A
+# reserved address survives stop/start, so DNS records and certificates bound
+# to the host stay valid.
+resource "yandex_vpc_address" "addr" {
+  name = "<{ yandex-name }>"
 
+  external_ipv4_address {
+    zone_id = "<{ yandex-zone }>"
+  }
+}
+<% endif %>
 resource "yandex_compute_instance" "node1" {
   name        = "<{ yandex-name }>"
   platform_id = "<{ yandex-platform-id }>"
@@ -51,8 +63,14 @@ resource "yandex_compute_instance" "node1" {
   network_interface {
     subnet_id = yandex_vpc_subnet.subnet.id
     nat       = true
-  }
-
+<% if yandex-static-ip %>    nat_ip_address = yandex_vpc_address.addr.external_ipv4_address[0].address
+<% endif %>  }
+<% if yandex-allow-stopping-for-update %>
+  # Yandex cannot change some attributes — the NAT address among them — while
+  # the instance runs. Opt in so tofu may stop it briefly to apply such a
+  # change instead of failing the apply.
+  allow_stopping_for_update = true
+<% endif %>
   # Yandex has no account-level SSH key registry: the user and its key are
   # created by cloud-init from instance metadata.
   metadata = {

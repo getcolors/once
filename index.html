@@ -961,8 +961,12 @@ yandex-platform-id: standard-v3
 yandex-cores: 2
 yandex-memory-gb: 2
 yandex-core-fraction: 100
-yandex-disk-size-gb: 20</code></pre>
+yandex-disk-size-gb: 20
+yandex-static-ip: false
+yandex-allow-stopping-for-update: false</code></pre>
       <p>Creates a network, subnet, NAT-enabled Ubuntu instance, and boot disk. <code>compute-pubkey</code> is installed for the <code>ubuntu</code> user; keep the private half in <code>ssh-agent</code>. Credential: <code>COLORS_PAR_YANDEX_TOKEN</code>, passed to OpenTofu as <code>YC_TOKEN</code>.</p>
+      <p><code>yandex-static-ip</code> reserves a <code>yandex_vpc_address</code> and pins the instance's NAT to it. Yandex releases an ephemeral NAT address whenever an instance stops, so without a reserved address a restarted instance comes back on a different IP and anything bound to the old one — a DNS record, a certificate, an <code>~/.ssh/config</code> entry — silently breaks.</p>
+      <p><code>yandex-allow-stopping-for-update</code> lets OpenTofu stop the instance to apply a change Yandex cannot make in place, such as <code>yandex-cores</code>, <code>yandex-memory-gb</code>, or <code>yandex-platform-id</code>. Leave it off for a server carrying traffic — the apply then fails naming the flag rather than taking the instance down mid-deploy — and enable it for the one deploy that resizes the instance (<code>COLORS_PAR_YANDEX_ALLOW_STOPPING_FOR_UPDATE=true</code>). Attaching a reserved address does not need it. Both keys default to <code>false</code>, which renders exactly as before.</p>
 
       <h3>Oracle Cloud Infrastructure</h3>
       <pre><code class="language-yaml">provider-compute: oci
