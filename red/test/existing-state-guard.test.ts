@@ -20,3 +20,24 @@ for(const [event,dry] of [['build',false],['create',true]] as const)test(`offlin
  const load=spyOn(machine,'load').mockImplementation(async()=>{throw Error('offline state read');});
  try{expect((await w.startStep({...input,'red/event':event,'red/dry-run':dry},{}))['red/exit']).toBe(0);expect(load).not.toHaveBeenCalled();}finally{load.mockRestore();}
 });
+
+test('retired delete exits before provider or host cleanup and compute retires last',async()=>{
+ const compute=await import('colors-compute-red');const calls:string[]=[];
+ const read=spyOn(compute,'read_deployment').mockImplementation(async()=>{calls.push('read');return {status:'destroyed'};});
+ try{
+  const opts:any={...input,'red/event':'delete','compute-prevent-destroy':false};delete opts['digitalocean-ssh-keys'];
+  const wf=workflow({start:'once/start',wireFn:(step,o)=>{const edge=w.wireFn(step,o);if(!edge)return undefined;return [step==='once/start'?(values:any)=>w.startStep(values,env):async(values:any)=>{calls.push(step);return {...values,'red/exit':0};},...edge.slice(1)] as any;},nextFn:w.nextSteps});
+  const result=await run(wf,opts);expect(result['red/exit']).toBe(0);expect(calls).toEqual(['read']);
+  expect((await machine.load({...opts,'red/event':'create'},{}))['red/exit']).toBe(1);
+  expect(w.nextSteps('once/start',['once/github'],{'red/exit':1})).toEqual([]);
+  expect(w.wireFn('once/tofu-dns',opts)?.slice(1)).toEqual(['once/tofu-smtp']);
+  expect(w.wireFn('once/tofu-smtp',opts)?.slice(1)).toEqual(['once/tofu-compute']);
+ }finally{read.mockRestore();}
+});
+
+test('failed local cleanup never invokes remote cleanup',async()=>{
+ const tools=await import('../src/tools.ts');
+ const local=spyOn(tools,'ansibleLocalStep').mockImplementation(async o=>({...o,'red/exit':1}));
+ const remote=spyOn(tools,'ansibleRemoteStep').mockImplementation(async()=>{throw Error('remote after local failure');});
+ try{expect((await w.ansibleCleanupStep({'red/event':'delete'}))['red/exit']).toBe(1);expect(remote).not.toHaveBeenCalled();}finally{local.mockRestore();remote.mockRestore();}
+});

@@ -4,7 +4,7 @@ import * as dryRun from "red/dry-run";
 import * as progress from "red/progress";
 import { preflight } from "red/lifecycle";
 import * as tofu from "red/tofu";
-import { adviceAdd, workflow, type Opts, type StepFn } from "red/workflow";
+import { adviceAdd, workflow, failed, type Opts, type StepFn } from "red/workflow";
 import { readPars } from "red/cli";
 import { dirname } from "node:path";
 import * as github from "./github.ts";
@@ -23,7 +23,7 @@ async function stateOutput(opts: Opts, tool: string): Promise<Record<string, unk
 
 async function adoptExistingState(opts: Opts): Promise<Opts> {
   const loaded = await machine.load(opts);
-  if (loaded['red/exit']) return loaded;
+  if (loaded['red/exit'] || loaded['colors-compute/already-destroyed']) return loaded;
   const smtp = await stateOutput(opts,'tofu-smtp');
   return {...loaded,...(smtp??{}),...(smtp?{'once/smtp-params':smtp}:{})};
 }
@@ -71,7 +71,8 @@ export async function startStep(
 }
 
 export async function ansibleCleanupStep(opts: Opts): Promise<Opts> {
-  return tools.ansibleRemoteStep(await tools.ansibleLocalStep(opts));
+  const local = await tools.ansibleLocalStep(opts);
+  return failed(local) ? local : tools.ansibleRemoteStep(local);
 }
 
 export const tofuSteps = ["once/tofu-compute", "once/tofu-smtp", "once/tofu-dns", "once/tofu-smtp-post"];
@@ -88,8 +89,8 @@ export function wireFn(step: string, runOpts: Opts) {
       case "once/github": return [github.githubStep, "once/ansible-cleanup"] as const;
       case "once/ansible-cleanup": return [ansibleCleanupStep, "once/tofu-smtp-post"] as const;
       case "once/tofu-smtp-post": return [tools.tofuSmtpPostStep, "once/tofu-dns"] as const;
-      case "once/tofu-dns": return [tools.tofuDnsStep, "once/tofu-smtp", "once/tofu-compute"] as const;
-      case "once/tofu-smtp": return [tools.tofuSmtpStep] as const;
+      case "once/tofu-dns": return [tools.tofuDnsStep, "once/tofu-smtp"] as const;
+      case "once/tofu-smtp": return [tools.tofuSmtpStep, "once/tofu-compute"] as const;
       // The local keypair goes last, strictly after a successful compute
       // destroy: a failed delete leaves the key, which is still the only
       // credential to whatever survived.
@@ -119,8 +120,12 @@ export function backendAdvice(tool: string) {
   });
 }
 
+export function nextSteps(step:string, successors:string[]|null, opts:Opts):[string,Opts][] {
+  if(failed(opts)||(step==='once/start'&&opts['red/event']==='delete'&&opts['colors-compute/already-destroyed']===true))return [];
+  return (successors??[]).map(successor=>[successor,opts]);
+}
 function createWorkflow() {
-  let result = workflow({ start: "once/start", wireFn });
+  let result = workflow({ start: "once/start", wireFn, nextFn:nextSteps });
   for (const tool of tofuSteps.slice(1).map((step) => step.slice("once/".length))) {
     result = adviceAdd(result, `once/${tool}`, "before", "once.workflow/backend", backendAdvice(tool));
   }

@@ -137,9 +137,9 @@
         "the managed SSH config goes before anything is destroyed")
     (is (= [:once/tofu-smtp-post] (:once/ansible-cleanup g)))
     (is (= [:once/tofu-dns] (:once/tofu-smtp-post g)))
-    (is (= [:once/tofu-smtp :once/tofu-compute] (:once/tofu-dns g))
+    (is (= [:once/tofu-smtp] (:once/tofu-dns g))
         "DNS must go before the records' targets")
-    (is (= [] (:once/tofu-smtp g)))
+    (is (= [:once/tofu-compute] (:once/tofu-smtp g)))
     (is (= [] (:once/tofu-compute g))
         "library compute destruction also owns key cleanup")
     (is (= [] (:once/ssh-cleanup g)))))
@@ -300,3 +300,24 @@
   (with-redefs [machine/load-inventory (fn [& _] (throw (AssertionError. "offline state read")))]
     (doseq [[event dry?] [[:build false] [:create true]]]
       (is (= 0 (:green/exit (sut/start-step (assoc valid :green/event event :green/dry-run dry? :compute-require-existing-state true) {})))))))
+
+(deftest retired-delete-stops-before-key-files-or-application-cleanup
+  (let [calls (atom []) env {"COLORS_PAR_DO_TOKEN" "fixture" "COLORS_PAR_NO_INFRA_SMTP_PASSWORD" "pw" "COLORS_PAR_CLOUDFLARE_API_TOKEN" "cf"}
+        opts (dissoc (assoc valid :green/event :delete :compute-prevent-destroy false) :digitalocean-ssh-keys)]
+    (with-redefs [io.github.getcolors.compute-inspection/read-deployment (fn [& _] (swap! calls conj :read) {:status "destroyed"})
+                  tofu/outputs (fn [& _] (throw (AssertionError. "retired delete read application state")))]
+      (let [graph (wf/workflow {:start :once/start :wire-fn (fn [step o]
+                              (let [[_ & next] (sut/wire-fn step o)]
+                                (into [(if (= step :once/start) #(sut/start-step % env)
+                                         (fn [v] (swap! calls conj step) (assoc v :green/exit 0)))] next)))
+                               :next-fn sut/next-steps})
+            result (wf/run graph opts)]
+        (is (= 0 (:green/exit result)))
+        (is (= [:read] @calls))
+        (is (= 1 (:green/exit (machine/load-inventory (assoc opts :green/event :create) {}))))
+        (is (= [] (sut/next-steps :once/start [:once/github] {:green/exit 1})))))))
+
+(deftest failed-local-cleanup-never-invokes-remote
+  (with-redefs [tools/ansible-local-step #(assoc % :green/exit 1)
+                tools/ansible-remote-step (fn [_] (throw (AssertionError. "remote after local failure")))]
+    (is (= 1 (:green/exit (sut/ansible-cleanup-step {:green/event :delete}))))))

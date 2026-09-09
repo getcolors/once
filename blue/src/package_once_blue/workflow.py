@@ -6,7 +6,7 @@ from pathlib import Path
 from blue import dry_run, progress, tofu
 from blue.cli import par_name
 from blue.lifecycle import preflight
-from blue.workflow import advice_add, workflow
+from blue.workflow import advice_add, workflow, failed
 
 from blue.cli import read_pars
 
@@ -39,7 +39,7 @@ async def _state_output(opts: dict, tool: str) -> dict | None:
 
 async def _adopt_existing_state(opts: dict) -> dict:
     loaded = await machine.load(opts)
-    if loaded.get('blue/exit'):
+    if loaded.get('blue/exit') or loaded.get('colors-compute/already-destroyed'):
         return loaded
     smtp = await _state_output(opts, 'tofu-smtp')
     return {**loaded, **(smtp or {}), **({'once/smtp-params': smtp} if smtp else {})}
@@ -65,7 +65,8 @@ async def start_step(original: dict, env: dict[str, str] | None = None) -> dict:
 
 
 async def ansible_cleanup_step(opts: dict) -> dict:
-    return await tools.ansible_remote_step(await tools.ansible_local_step(opts))
+    local = await tools.ansible_local_step(opts)
+    return local if failed(local) else await tools.ansible_remote_step(local)
 
 
 tofu_steps = ["once/tofu-compute", "once/tofu-smtp", "once/tofu-dns", "once/tofu-smtp-post"]
@@ -83,8 +84,8 @@ def wire_fn(step: str, run_opts: dict):
             "once/github": (github.github_step, "once/ansible-cleanup"),
             "once/ansible-cleanup": (ansible_cleanup_step, "once/tofu-smtp-post"),
             "once/tofu-smtp-post": (tools.tofu_smtp_post_step, "once/tofu-dns"),
-            "once/tofu-dns": (tools.tofu_dns_step, "once/tofu-smtp", "once/tofu-compute"),
-            "once/tofu-smtp": (tools.tofu_smtp_step,),
+            "once/tofu-dns": (tools.tofu_dns_step, "once/tofu-smtp"),
+            "once/tofu-smtp": (tools.tofu_smtp_step, "once/tofu-compute"),
             # The local keypair goes last, strictly after a successful compute
             # destroy: a failed delete leaves the key, which is still the only
             # credential to whatever survived.
@@ -112,8 +113,14 @@ def backend_advice(tool: str):
     )
 
 
+def next_steps(step, successors, opts):
+    if failed(opts) or (step == "once/start" and opts.get("blue/event") == "delete" and opts.get("colors-compute/already-destroyed") is True):
+        return []
+    return [(successor, opts) for successor in (successors or [])]
+
+
 def create_workflow():
-    result = workflow(start="once/start", wire_fn=wire_fn)
+    result = workflow(start="once/start", wire_fn=wire_fn, next_fn=next_steps)
     for step in tofu_steps[1:]:
         tool = step.removeprefix("once/")
         result = advice_add(result, step, "before", "once.workflow/backend", backend_advice(tool))

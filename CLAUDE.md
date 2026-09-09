@@ -17,11 +17,15 @@ legacy source keys. See the bundled skill's configuration reference for details.
 
 For existing deployments moving to remote state, set
 `compute-require-existing-state: true`. A real create reads the recorded compute
-inventory in the start step before generating deploy keys or starting the
-parallel compute and SMTP branches. Missing, retired, unreadable, or incompatible
+inventory in the start step before generating deploy keys or running compute and the subsequent SMTP stage. Missing, retired, unreadable, or incompatible
 ownership stops the workflow. The library then checks ownership again under its
 conditional journal lock. Build and dry-run perform neither state read. This
 guard does not transfer compute or application state.
+
+Delete retires compute only after DNS and SMTP cleanup. A validated retired
+compute journal makes a repeated delete return successfully before any host
+access, key-file reads, or application cleanup. Invalid or unreadable ownership
+still fails. Credential and destroy-protection checks remain in effect.
 
 
 ## Repository
@@ -136,7 +140,7 @@ start ─ tofu-compute ─ tofu-smtp ─ tofu-dns ─ smtp-post ─ ansible-loca
 ```
 
 Delete withdraws published credentials first, then runs cleanup, SMTP post,
-DNS, then SMTP and compute in parallel. Step
+DNS, SMTP, and finally compute. Step
 failures travel as color-namespaced exit/error keys rather than uncaught
 exceptions. Builds render without invoking tools; dry-runs touch nothing.
 

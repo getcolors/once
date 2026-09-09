@@ -68,7 +68,10 @@
   ([opts] (load-inventory opts (into {} (System/getenv))))
   ([opts env]
    (let [result (inspection/read-deployment opts env)]
-     (if (= "present" (:status result))
+     (cond
+       (and (= "destroyed" (:status result)) (= :delete (:green/event opts)))
+       (assoc opts :green/exit 0 :colors-compute/already-destroyed true)
+       (= "present" (:status result))
        (let [adopted (params opts result)]
          (assoc (merge opts adopted) :once/compute-params adopted :colors-compute/cluster (:cluster result) :green/exit 0))
-       (assoc opts :green/exit 1 :green/err "compute inventory unavailable; legacy state requires explicit migration")))))
+       :else (assoc opts :green/exit 1 :green/err "compute inventory unavailable; legacy state requires explicit migration")))))

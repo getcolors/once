@@ -1,10 +1,10 @@
 (ns io.github.getcolors.once.workflow
   "The DAG the launcher runs, and the two steps that are not a tool.
 
-  Create and build join compute and SMTP at DNS, then run local SSH setup
-  before remote application convergence. A guarded real create verifies
-  recorded compute ownership before either parallel provider branch starts.
-  Delete removes local aliases before destroying compute."
+  Create and build run compute, SMTP, DNS, local SSH setup, and remote
+  application convergence in order. A guarded real create verifies recorded
+  compute ownership before generating application deploy keys. Delete removes
+  local aliases and application resources before retiring compute ownership."
 
   (:require
    [clojure.java.io :as io]
@@ -41,7 +41,7 @@
   earlier stages produced (compute ip, smtp domain id and records)."
   [opts]
   (let [loaded (machine/load-inventory opts)]
-    (if (wf/failed? loaded) loaded
+    (if (or (wf/failed? loaded) (:colors-compute/already-destroyed loaded)) loaded
         (let [smtp (state-output opts "tofu-smtp")]
           (cond-> loaded smtp (-> (merge smtp) (assoc :once/smtp-params smtp)))))))
 
@@ -102,7 +102,8 @@
   block; both steps then scaffold against :green/event :delete, which deletes
   their targets."
   [opts]
-  (-> opts tools/ansible-local-step tools/ansible-remote-step))
+  (let [local (tools/ansible-local-step opts)]
+    (if (wf/failed? local) local (tools/ansible-remote-step local))))
 
 ;; ---------------------------------------------------------------------------
 ;; wiring
@@ -126,8 +127,8 @@
       :once/github          [github/github-step :once/ansible-cleanup]
       :once/ansible-cleanup [ansible-cleanup-step :once/tofu-smtp-post]
       :once/tofu-smtp-post  [tools/tofu-smtp-post-step :once/tofu-dns]
-      :once/tofu-dns        [tools/tofu-dns-step :once/tofu-smtp :once/tofu-compute]
-      :once/tofu-smtp       [tools/tofu-smtp-step]
+      :once/tofu-dns        [tools/tofu-dns-step :once/tofu-smtp]
+      :once/tofu-smtp       [tools/tofu-smtp-step :once/tofu-compute]
       ;; The local keypair goes last, strictly after a successful compute
       ;; destroy: a failed delete leaves the key, which is still the only
       ;; credential to whatever survived.
@@ -141,8 +142,7 @@
       :once/tofu-smtp-post  [tools/tofu-smtp-post-step :once/ansible-local]
       :once/ansible-local   [tools/ansible-local-step :once/ansible-remote]
       ;; Publishing follows the remote stage, not the local one: the
-      ;; credentials describe a configured host, and a workstation-side failure
-      ;; should not gate them.
+      ;; credentials describe a host whose local access and remote configuration succeeded.
       :once/ansible-remote  [tools/ansible-remote-step :once/github]
       :once/github          [github/github-step])))
 
@@ -157,8 +157,13 @@
    {:dir-fn #(tools/tool-dir % tool)
     :key-fn #(str (or (:profile %) "default") "/" tool ".tfstate")}))
 
+(defn next-steps [step successors opts]
+  (if (or (wf/failed? opts)
+          (and (= step :once/start) (= :delete (:green/event opts)) (true? (:colors-compute/already-destroyed opts))))
+    [] (mapv #(vector % opts) successors)))
+
 (def workflow
-  (-> (wf/workflow {:start :once/start :wire-fn wire-fn})
+  (-> (wf/workflow {:start :once/start :wire-fn wire-fn :next-fn next-steps})
       (wf/advice-add :once/tofu-smtp :before ::backend
                      (backend-advice "tofu-smtp"))
       (wf/advice-add :once/tofu-dns :before ::backend
