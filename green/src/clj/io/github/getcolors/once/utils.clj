@@ -58,8 +58,9 @@
      operator's `~/.ssh`, still profile-named. A launcher pinned older
      generates and resolves the key inside the checkout, so it cannot see a
      keypair living in ~/.ssh and would generate a second one beside a live
-     deployment's state."
-  13)
+     deployment's state.
+  14: colors-compute owns VM providers, remote compute state and SSH keys."
+  14)
 
 (defn registrable-domain
   "The DNS zone `host` belongs to: its last two labels. Multi-label suffixes

@@ -29,59 +29,21 @@ build_variant() {
   diff -qr "$tmp/$variant/green/parity" "$tmp/$variant/blue/parity"
 }
 
-build_variant local
-build_variant azure COLORS_PAR_PROVIDER_COMPUTE=azure
-build_variant aws COLORS_PAR_PROVIDER_COMPUTE=aws
-build_variant google COLORS_PAR_PROVIDER_COMPUTE=google
-build_variant digitalocean-vpc COLORS_PAR_DIGITALOCEAN_VPC_UUID=vpc-123
-build_variant hcloud COLORS_PAR_PROVIDER_COMPUTE=hcloud
-build_variant vultr COLORS_PAR_PROVIDER_COMPUTE=vultr
-build_variant yandex COLORS_PAR_PROVIDER_COMPUTE=yandex
-# Both toggles of the reserved-address branch. The fixture carries the keys as
-# booleans so these overrides are coerced to boolean true — the three template
-# engines agree on boolean truthiness, not on the string "false".
-build_variant yandex-static COLORS_PAR_PROVIDER_COMPUTE=yandex \
-  COLORS_PAR_YANDEX_STATIC_IP=true \
-  COLORS_PAR_YANDEX_ALLOW_STOPPING_FOR_UPDATE=true
-# Cover the image-id conditional independently of the address toggles.
-build_variant yandex-pinned COLORS_PAR_PROVIDER_COMPUTE=yandex \
-  COLORS_PAR_YANDEX_IMAGE_ID=fd8example
-build_variant oci COLORS_PAR_PROVIDER_COMPUTE=oci
-# Both sides of the oci-image-id branch. The unpinned side renders a data
-# source and the pinned side renders none, so a colour whose template engine
-# handles <% else %> differently diverges here rather than in production.
-build_variant oci-pinned COLORS_PAR_PROVIDER_COMPUTE=oci \
-  COLORS_PAR_OCI_IMAGE_ID=ocid1.image.oc1.eu-frankfurt-1.aaaaaaaaexample
-# Keygen mode (workspace standards/ssh-keypair.md): an absent machine key
-# makes the package generate and own the profile-named keypair. An empty
-# override reads as a placeholder — exactly how a colors.yml without the key
-# reads — so each variant renders its template's keygen branch: the provider
-# key resource on digitalocean/hcloud/vultr, the profile-named key_name on
-# aws, the filled pubkey path on oci/azure/google, and the deterministic
-# content placeholder on yandex.
-build_variant digitalocean-keygen COLORS_PAR_DIGITALOCEAN_SSH_KEYS=
-build_variant hcloud-keygen COLORS_PAR_PROVIDER_COMPUTE=hcloud \
-  COLORS_PAR_HCLOUD_SSH_KEYS=
-build_variant vultr-keygen COLORS_PAR_PROVIDER_COMPUTE=vultr \
-  COLORS_PAR_VULTR_SSH_KEYS=
-build_variant aws-keygen COLORS_PAR_PROVIDER_COMPUTE=aws \
-  COLORS_PAR_AWS_SSH_AUTHORIZED_KEYS=
-build_variant azure-keygen COLORS_PAR_PROVIDER_COMPUTE=azure \
-  COLORS_PAR_AZURE_SSH_AUTHORIZED_KEYS=
-build_variant google-keygen COLORS_PAR_PROVIDER_COMPUTE=google \
-  COLORS_PAR_GOOGLE_SSH_AUTHORIZED_KEYS=
-build_variant oci-keygen COLORS_PAR_PROVIDER_COMPUTE=oci \
-  COLORS_PAR_OCI_SSH_AUTHORIZED_KEYS=
-build_variant yandex-keygen COLORS_PAR_PROVIDER_COMPUTE=yandex \
-  COLORS_PAR_COMPUTE_PUBKEY=
-build_variant no-infra-compute COLORS_PAR_PROVIDER_COMPUTE=no-infra
+for provider in azure aws google digitalocean hcloud vultr yandex oci; do
+  build_variant "$provider-external" "COLORS_PAR_PROVIDER_COMPUTE=$provider"
+done
+build_variant external-identity COLORS_PAR_SSH_PRIVATE_KEY_PATH=/tmp/fixture-identity
+build_variant yandex-static COLORS_PAR_PROVIDER_COMPUTE=yandex COLORS_PAR_YANDEX_STATIC_IP=true COLORS_PAR_YANDEX_ALLOW_STOPPING_FOR_UPDATE=true
+build_variant yandex-pinned COLORS_PAR_PROVIDER_COMPUTE=yandex COLORS_PAR_YANDEX_IMAGE_ID=fd8example
+build_variant oci-pinned COLORS_PAR_PROVIDER_COMPUTE=oci COLORS_PAR_OCI_IMAGE_ID=ocid1.image.oc1.eu-frankfurt-1.aaaaaaaaexample
+sed '/^.*-ssh-authorized-keys:/d; /^.*-ssh-keys:/d; /^compute-pubkey:/d' "$state" > "$tmp/managed.yml"
+state="$tmp/managed.yml"
+for provider in azure aws google digitalocean hcloud vultr yandex oci; do
+  build_variant "$provider-managed" "COLORS_PAR_PROVIDER_COMPUTE=$provider"
+done
 build_variant no-infra-smtp COLORS_PAR_PROVIDER_SMTP=no-infra
 build_variant no-infra-dns COLORS_PAR_PROVIDER_DNS=no-infra
-# Yandex DNS renders generated record files like Cloudflare, but as
-# yandex_dns_recordset with absolute names — a colour whose record builder
-# drifts (a missing trailing dot, an MX priority outside data) diverges here.
 build_variant yandex-dns COLORS_PAR_PROVIDER_DNS=yandex
-build_variant s3 COLORS_PAR_PROVIDER_BACKEND=s3
 build_variant r2 COLORS_PAR_PROVIDER_BACKEND=r2
 
 diff -qr "$root/green/src/resources/io/github/getcolors/once" "$root/red/resources"
@@ -161,3 +123,15 @@ echo "green, red, and blue resolve every container in the parity corpus alike"
 echo "green, red, and blue run the machine-key matrix and preflight alike"
 echo "green, red, and blue run the compute provider operations alike"
 echo "green, red, and blue run the compute cluster operations alike"
+
+# Recorded inventory adapters are not reached by a build.
+(cd "$root/green" && bb ../scripts/machine-green.clj "$root/test/parity/machine.json") > "$tmp/machine-green"
+(cd "$root/red" && bun ../scripts/machine-red.ts "$root/test/parity/machine.json") > "$tmp/machine-red"
+(cd "$root/blue" && uv run python ../scripts/machine-blue.py "$root/test/parity/machine.json") > "$tmp/machine-blue"
+python3 - "$tmp" <<'PYTHON'
+import json, pathlib, sys
+root=pathlib.Path(sys.argv[1])
+values=[json.loads((root/('machine-'+color)).read_text()) for color in ['green','red','blue']]
+assert values[0]==values[1]==values[2], 'recorded compute parameters differ'
+print('green, red, and blue adapt recorded compute inventory alike')
+PYTHON

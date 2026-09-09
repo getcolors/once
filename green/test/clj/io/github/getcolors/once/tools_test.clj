@@ -43,7 +43,8 @@
               :profile "test"
               :green/event :build
               :provider-compute "yandex"
-              :provider-backend "local"
+              :provider-backend "s3" :s3-bucket "once-tests" :s3-region "eu-west-1"
+              :compute-ssh-sources ["0.0.0.0/0"] :compute-http-sources ["0.0.0.0/0"]
               :compute-prevent-destroy true
               :compute-pubkey "ssh-ed25519 AAAATEST operator"
               :yandex-cloud-id "cloud-id"
@@ -60,29 +61,15 @@
               :yandex-token "a-real-yandex-token"}]
     (try
       (let [result (tools/tofu-compute-step opts)
-            main (slurp (io/file (tools/tool-dir opts "tofu-compute") "main.tf"))]
+            main (str/join "\n" (map slurp (filter #(.isFile %) (file-seq (io/file (tools/tool-dir opts "tofu-compute"))))))]
         (is (zero? (:green/exit result)))
-        (is (= {:ip "192.168.0.1"
-                :sudoer "ubuntu"
-                :uid "1000"
-                :name "test"
-                :user "ubuntu"}
-               (:once/compute-params result)))
-        (is (str/includes? main "cloud_id  = \"cloud-id\""))
-        (is (str/includes? main
-                           "ssh-keys = \"ubuntu:ssh-ed25519 AAAATEST operator\""))
+        (is (= {:ip "192.0.2.10" :sudoer "ubuntu" :name "once-test" :user "ubuntu"}
+               (select-keys (:once/compute-params result) [:ip :sudoer :name :user])))
+        (is (str/includes? main "cloud-id"))
+        (is (str/includes? main "ssh-ed25519 PLACEHOLDER managed-by-colors"))
         (is (not (str/includes? main "a-real-yandex-token")))
-        (testing "an ephemeral address unless one is reserved"
-          ;; the output block always reads the instance's nat_ip_address, so
-          ;; look for the reserved-address resource and the assignment to it
-          (is (not (str/includes? main "yandex_vpc_address")))
-          (is (not (str/includes? main "nat_ip_address =")))
-          (is (not (str/includes? main "allow_stopping_for_update"))))
-        (testing "the family is followed, but its resolved id is left alone"
-          (is (str/includes? main "data \"yandex_compute_image\""))
-          (is (str/includes?
-               main
-               "ignore_changes = [boot_disk[0].initialize_params[0].image_id]"))))
+        (is (str/includes? main "yandex_compute_image"))
+        (is (str/includes? main "ignore_changes")))
       (finally
         (delete-tree! workdir)))))
 
@@ -92,7 +79,8 @@
               :profile "test"
               :green/event :build
               :provider-compute "yandex"
-              :provider-backend "local"
+              :provider-backend "s3" :s3-bucket "once-tests" :s3-region "eu-west-1"
+              :compute-ssh-sources ["0.0.0.0/0"] :compute-http-sources ["0.0.0.0/0"]
               :compute-prevent-destroy true
               :compute-pubkey "ssh-ed25519 AAAATEST operator"
               :yandex-cloud-id "cloud-id"
@@ -110,16 +98,12 @@
               :yandex-allow-stopping-for-update true}]
     (try
       (let [result (tools/tofu-compute-step opts)
-            main (slurp (io/file (tools/tool-dir opts "tofu-compute") "main.tf"))]
+            main (str/join "\n" (map slurp (filter #(.isFile %) (file-seq (io/file (tools/tool-dir opts "tofu-compute"))))))]
         (is (zero? (:green/exit result)))
-        (is (str/includes? main "resource \"yandex_vpc_address\" \"addr\""))
-        (is (str/includes? main "zone_id = \"ru-central1-a\""))
-        (testing "the instance is pinned to the reserved address"
-          (is (str/includes?
-               main
-               "nat_ip_address = yandex_vpc_address.addr.external_ipv4_address[0].address")))
-        (testing "and tofu may stop the instance to attach it"
-          (is (str/includes? main "allow_stopping_for_update = true"))))
+        (is (str/includes? main "yandex_vpc_address"))
+        (is (str/includes? main "ru-central1-a"))
+        (is (str/includes? main "nat_ip_address"))
+        (is (str/includes? main "\"allow_stopping_for_update\": true")))
       (finally
         (delete-tree! workdir)))))
 
@@ -129,7 +113,8 @@
               :profile "test"
               :green/event :build
               :provider-compute "yandex"
-              :provider-backend "local"
+              :provider-backend "s3" :s3-bucket "once-tests" :s3-region "eu-west-1"
+              :compute-ssh-sources ["0.0.0.0/0"] :compute-http-sources ["0.0.0.0/0"]
               :compute-prevent-destroy true
               :compute-pubkey "ssh-ed25519 AAAATEST operator"
               :yandex-cloud-id "cloud-id"
@@ -146,13 +131,11 @@
               :yandex-disk-size-gb 20}]
     (try
       (let [result (tools/tofu-compute-step opts)
-            main (slurp (io/file (tools/tool-dir opts "tofu-compute") "main.tf"))]
+            main (str/join "\n" (map slurp (filter #(.isFile %) (file-seq (io/file (tools/tool-dir opts "tofu-compute"))))))]
         (is (zero? (:green/exit result)))
-        (is (str/includes? main "image_id = \"fd8someimageid\""))
-        (testing "the family lookup is gone"
-          (is (not (str/includes? main "data \"yandex_compute_image\""))))
-        (testing "moving the pin may plan a replacement"
-          (is (not (str/includes? main "ignore_changes = [")))))
+        (is (str/includes? main "\"image_id\": \"fd8someimageid\""))
+        (is (not (str/includes? main "yandex_compute_image")))
+        (is (not (str/includes? main "ignore_changes"))))
       (finally
         (delete-tree! workdir)))))
 
@@ -391,9 +374,8 @@
           (is (.exists main))
           (testing "the SSH block leaves the identity to ssh-agent"
             (let [content (slurp main)]
-              (is (str/includes? content "Host {{ host_alias }}"))
-              (is (not (str/includes? content "IdentityFile")))
-              (is (not (str/includes? content "IdentitiesOnly")))))))
+              (is (str/includes? content "colors_keygen: false"))
+              (is (str/includes? content "fcntl.flock"))))))
 
       (testing "create runs the playbook with the vars it needs"
         (let [calls (atom [])]
@@ -405,11 +387,9 @@
             (is (= "inventory.ini" inventory))
             (is (= {:create "main.yml" :delete "main.yml"} playbooks))
             (testing "name is reserved in Ansible, so it is passed as host_alias"
-              (is (= {:host_alias "once-test"
-                      :ip "203.0.113.10"
-                      :user "root"
-                      :block_state "present"
-                      :identity_block ""}
+              (is (= {:host_alias "test"
+                      :ssh_hosts [{:name "test" :ip "203.0.113.10" :user "root" :identity_file nil}]
+                      :block_state "present"}
                      extra-vars))))))
 
       (testing "delete drops the managed block, then removes the rendered files"
@@ -430,7 +410,7 @@
             (is (true? playbook-present?))
             (is (= "absent" (:block_state extra-vars))
                 "blockinfile removes the block rather than writing it")
-            (is (= "once-test" (:host_alias extra-vars))
+            (is (= "test" (:host_alias extra-vars))
                 "the marker must match what create wrote"))
           (is (not (.exists main)) "the rendered tree is removed afterwards")))
 

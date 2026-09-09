@@ -2,6 +2,10 @@
 - name: Managed Server Configuration
   hosts: all
   tasks:
+    - name: Wait for SSH after compute creation
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
     - name: Install docker
       ansible.builtin.shell: >-
         curl -fsSL https://get.docker.com -o install-docker.sh

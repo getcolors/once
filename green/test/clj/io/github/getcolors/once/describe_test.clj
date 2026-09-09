@@ -130,7 +130,7 @@
                         :r2-access-key-id "r2-key"
                         :r2-secret-access-key "r2-secret")]
       (#'d/resolve-tofu-opts opts run-fn)
-      (is (= 2 (count @calls)) "compute and smtp state are both read")
+      (is (= 1 (count @calls)) "compute state uses the library; only SMTP uses tofu output")
       (is (every? (fn [[args _]] (= ["tofu" "output" "-json"] args)) @calls))
       (is (every? (fn [[_ o]] (= {"AWS_ACCESS_KEY_ID" "r2-key"
                                   "AWS_SECRET_ACCESS_KEY" "r2-secret"}
@@ -180,7 +180,7 @@
           result (#'d/report (dissoc base-opts :ip) run-fn {:compute-detail compute-detail})]
       (is (= :absent (get-in result [:compute :status])))
       (is (str/includes? (get-in result [:compute :detail])
-                         "Backend initialization required")))))
+                         "compute inventory unavailable")))))
 
 (deftest describe-no-infra-host-is-never-absent
   (let [opts   (-> base-opts

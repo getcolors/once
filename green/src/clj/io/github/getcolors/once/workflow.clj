@@ -19,6 +19,7 @@
    [green.progress :as progress]
    [green.tofu :as tofu]
    [green.workflow :as wf]
+   [io.github.getcolors.once.machine :as machine]
    [io.github.getcolors.once.github :as github]
    [io.github.getcolors.once.ssh :as ssh]
    [io.github.getcolors.once.tools :as tools]
@@ -42,11 +43,10 @@
   "Delete renders the same templates as create, so a destroy needs the params
   earlier stages produced (compute ip, smtp domain id and records)."
   [opts]
-  (let [compute (state-output opts "tofu-compute")
-        smtp (state-output opts "tofu-smtp")]
-    (cond-> opts
-      compute (-> (merge compute) (assoc :once/compute-params compute))
-      smtp (-> (merge smtp) (assoc :once/smtp-params smtp)))))
+  (let [loaded (machine/load-inventory opts)]
+    (if (wf/failed? loaded) loaded
+        (let [smtp (state-output opts "tofu-smtp")]
+          (cond-> loaded smtp (-> (merge smtp) (assoc :once/smtp-params smtp)))))))
 
 (defn- with-deploy-keys
   "Attach the keys `ansible-remote` installs and the `github` step publishes.
@@ -91,26 +91,10 @@
           [(str "compute destruction is protected; set "
                 (green-cli/par-name :compute-prevent-destroy) "=false to delete")]))]
      :after-validate
-     ;; The machine key's create matrix and provider preflight run before any
-     ;; template is rendered: an unowned key on disk or at the provider stops
-     ;; the run while stopping is still free. Delete fills the same template
-     ;; values (destroy renders before it destroys) but checks nothing — its
-     ;; cleanup step runs after the compute destroy instead.
      (fn [opts _ {:keys [event real?]}]
-       (cond
-         (and real? (= :delete event))
-         (assoc (adopt-existing-state (ssh/with-machine-key opts true))
-                :green/exit 0)
-
-         (and real? (= :create event))
-         (let [opts (ssh/ensure-key! opts #(state-output % "tofu-compute"))]
-           (if (wf/failed? opts)
-             opts
-             (let [opts (ssh/preflight! (ssh/with-machine-key opts true))]
-               (if (wf/failed? opts) opts (with-deploy-keys opts real?)))))
-
-         :else
-         (with-deploy-keys (ssh/with-machine-key opts real?) real?)))}
+       (if (and real? (= :delete event))
+         (adopt-existing-state opts)
+         (with-deploy-keys opts real?)))}
     env)))
 
 (defn ansible-cleanup-step
@@ -148,11 +132,11 @@
       ;; The local keypair goes last, strictly after a successful compute
       ;; destroy: a failed delete leaves the key, which is still the only
       ;; credential to whatever survived.
-      :once/tofu-compute    [tools/tofu-compute-step :once/ssh-cleanup]
+      :once/tofu-compute    [tools/tofu-compute-step]
       :once/ssh-cleanup     [ssh/cleanup-step])
     (case step
-      :once/start           [start-step :once/tofu-compute :once/tofu-smtp]
-      :once/tofu-compute    [tools/tofu-compute-step :once/tofu-dns]
+      :once/start           [start-step :once/tofu-compute]
+      :once/tofu-compute    [tools/tofu-compute-step :once/tofu-smtp]
       :once/tofu-smtp       [tools/tofu-smtp-step :once/tofu-dns]
       :once/tofu-dns        [tools/tofu-dns-step :once/tofu-smtp-post]
       :once/tofu-smtp-post  [tools/tofu-smtp-post-step :once/ansible-local :once/ansible-remote]
@@ -176,8 +160,6 @@
 
 (def workflow
   (-> (wf/workflow {:start :once/start :wire-fn wire-fn})
-      (wf/advice-add :once/tofu-compute :before ::backend
-                     (backend-advice "tofu-compute"))
       (wf/advice-add :once/tofu-smtp :before ::backend
                      (backend-advice "tofu-smtp"))
       (wf/advice-add :once/tofu-dns :before ::backend

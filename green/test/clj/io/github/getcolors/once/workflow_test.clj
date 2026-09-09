@@ -8,6 +8,7 @@
    [green.tofu :as tofu]
    [green.workflow :as wf]
    [io.github.getcolors.once.tools :as tools]
+   [io.github.getcolors.once.machine :as machine]
    [io.github.getcolors.once.workflow :as sut]))
 
 (defn- temp-dir
@@ -26,10 +27,12 @@
    :workdir ".green"
    :once {:applications [{:host "www.example.com"
                           :image "ghcr.io/example/site:latest"}]}
-   :provider-compute "no-infra"
+   :provider-compute "digitalocean"
+   :digitalocean-region "ams3" :digitalocean-size "s-1vcpu-1gb" :digitalocean-image "ubuntu" :digitalocean-ssh-keys "fixture-key"
+   :compute-ssh-sources ["0.0.0.0/0"] :compute-http-sources ["0.0.0.0/0"]
    :provider-smtp "no-infra"
    :provider-dns "cloudflare"
-   :provider-backend "local"
+   :provider-backend "s3" :s3-bucket "once-tests" :s3-region "eu-west-1"
    :no-infra-compute-ip "203.0.113.10"
    :no-infra-compute-user "root"
    :no-infra-compute-sudoer "root"
@@ -63,13 +66,13 @@
 
   (testing "supplied through the environment, they satisfy the gate"
     (is (= 0 (:green/exit (sut/start-step (assoc valid :green/event :create)
-                                          {"COLORS_PAR_NO_INFRA_SMTP_PASSWORD" "pw"
+                                          {"COLORS_PAR_DO_TOKEN" "fixture" "COLORS_PAR_NO_INFRA_SMTP_PASSWORD" "pw"
                                            "COLORS_PAR_CLOUDFLARE_API_TOKEN" "cf"}))))))
 
 (deftest compute-destruction-is-protected-by-default
   (testing "delete stops before it starts"
     (let [result (sut/start-step (assoc valid :green/event :delete)
-                                 {"COLORS_PAR_NO_INFRA_SMTP_PASSWORD" "pw"
+                                 {"COLORS_PAR_DO_TOKEN" "fixture" "COLORS_PAR_NO_INFRA_SMTP_PASSWORD" "pw"
                                   "COLORS_PAR_CLOUDFLARE_API_TOKEN" "cf"})]
       (is (= 2 (:green/exit result)))
       (is (str/includes? (:green/err result)
@@ -79,16 +82,17 @@
     (is (str/includes?
          (:green/err (sut/start-step (dissoc (assoc valid :green/event :delete)
                                              :compute-prevent-destroy)
-                                     {"COLORS_PAR_NO_INFRA_SMTP_PASSWORD" "pw"
+                                     {"COLORS_PAR_DO_TOKEN" "fixture" "COLORS_PAR_NO_INFRA_SMTP_PASSWORD" "pw"
                                       "COLORS_PAR_CLOUDFLARE_API_TOKEN" "cf"}))
          "compute destruction is protected")))
 
   (testing "the environment override releases it, as a boolean not a string"
+    (with-redefs [machine/load-inventory #(assoc % :green/exit 0)]
     (is (= 0 (:green/exit
               (sut/start-step (assoc valid :green/event :delete)
-                              {"COLORS_PAR_NO_INFRA_SMTP_PASSWORD" "pw"
+                              {"COLORS_PAR_DO_TOKEN" "fixture" "COLORS_PAR_NO_INFRA_SMTP_PASSWORD" "pw"
                                "COLORS_PAR_CLOUDFLARE_API_TOKEN" "cf"
-                               "COLORS_PAR_COMPUTE_PREVENT_DESTROY" "false"})))))
+                               "COLORS_PAR_COMPUTE_PREVENT_DESTROY" "false"}))))))
 
   (testing "a dry-run delete needs no override — it destroys nothing"
     (is (= 0 (:green/exit (sut/start-step (assoc valid
@@ -109,13 +113,13 @@
                   [step (vec (rest wired))])))
         (into [:once/start] sut/side-effecting-steps)))
 
-(deftest create-forks-twice-and-joins-at-dns
+(deftest compute-precedes-application-resources
   (let [g (graph :create)]
-    (is (= [:once/tofu-compute :once/tofu-smtp] (:once/start g))
-        "compute and smtp have no dependency on each other")
-    (is (= [:once/tofu-dns] (:once/tofu-compute g)))
+    (is (= [:once/tofu-compute] (:once/start g))
+        "compute ownership refusal precedes SMTP mutations")
+    (is (= [:once/tofu-smtp] (:once/tofu-compute g)))
     (is (= [:once/tofu-dns] (:once/tofu-smtp g))
-        "both branches converge, so dns joins them")
+        "DNS follows compute and SMTP")
     (is (= [:once/tofu-smtp-post] (:once/tofu-dns g)))
     (is (= [:once/ansible-local :once/ansible-remote] (:once/tofu-smtp-post g)))
     (is (= [] (:once/ansible-local g)))
@@ -136,8 +140,8 @@
     (is (= [:once/tofu-smtp :once/tofu-compute] (:once/tofu-dns g))
         "DNS must go before the records' targets")
     (is (= [] (:once/tofu-smtp g)))
-    (is (= [:once/ssh-cleanup] (:once/tofu-compute g))
-        "the local machine key goes only after the compute destroy succeeded")
+    (is (= [] (:once/tofu-compute g))
+        "library compute destruction also owns key cleanup")
     (is (= [] (:once/ssh-cleanup g)))))
 
 (deftest build-follows-the-create-graph
@@ -198,7 +202,7 @@
 ;;; ------------------------------------------------------------------ end to end
 
 (def ^:private expected-build-artifacts
-  #{"tofu-compute/backend.tf.json" "tofu-compute/main.tf"
+  #{"tofu-compute/shared/backend.tf.json" "tofu-compute/nodes/0/backend.tf.json" "tofu-compute/shared/shared-none.tf.json" "tofu-compute/nodes/0/node-none.tf.json"
     "tofu-smtp/backend.tf.json" "tofu-smtp/main.tf"
     "tofu-dns/backend.tf.json" "tofu-dns/main.tf"
     "tofu-dns/apps.tf.json" "tofu-dns/smtp.tf.json"

@@ -1,3 +1,5 @@
+import { registry } from "colors-compute-red";
+import * as machine from "./machine.ts";
 import { parName } from "red/cli";
 import type { Opts } from "red/workflow";
 
@@ -13,44 +15,7 @@ export interface ProviderEntry {
 // Standard (workspace standards/ssh-keypair.md). A value that is present is
 // opt-out mode and is used exactly as before.
 export const providers: Record<string, Record<string, ProviderEntry>> = {
-  "provider-compute": {
-    azure: {
-      required: ["azure-subscription-id", "azure-location", "azure-resource-group", "azure-name", "azure-vm-size", "azure-image-publisher", "azure-image-offer", "azure-image-sku", "azure-image-version", "azure-vnet-cidr", "azure-subnet-cidr", "azure-boot-disk-size-gb"],
-      secrets: [], tofuEnv: {},
-    },
-    aws: {
-      required: ["aws-region", "aws-availability-zone", "aws-name", "aws-instance-type", "aws-image-id", "aws-vpc-cidr", "aws-subnet-cidr", "aws-root-volume-size-gb"],
-      secrets: [], tofuEnv: {},
-    },
-    google: {
-      required: ["google-project", "google-region", "google-zone", "google-name", "google-machine-type", "google-image-project", "google-image-family", "google-image-id", "google-subnet-cidr", "google-boot-disk-size-gb"],
-      secrets: [], tofuEnv: {},
-    },
-    digitalocean: {
-      required: ["digitalocean-name", "digitalocean-region", "digitalocean-size", "digitalocean-image"],
-      secrets: ["do-token"], tofuEnv: { "do-token": "DIGITALOCEAN_TOKEN" },
-    },
-    hcloud: {
-      required: ["hcloud-name", "hcloud-image", "hcloud-server-type", "hcloud-location"],
-      secrets: ["hcloud-token"], tofuEnv: { "hcloud-token": "HCLOUD_TOKEN" },
-    },
-    vultr: {
-      required: ["vultr-name", "vultr-region", "vultr-plan", "vultr-os-id"],
-      secrets: ["vultr-api-key"], tofuEnv: { "vultr-api-key": "VULTR_API_KEY" },
-    },
-    yandex: {
-      required: ["yandex-cloud-id", "yandex-folder-id", "yandex-zone", "yandex-image-family", "yandex-name", "yandex-subnet-cidr", "yandex-platform-id", "yandex-cores", "yandex-memory-gb", "yandex-core-fraction", "yandex-disk-size-gb"],
-      secrets: ["yandex-token"], tofuEnv: { "yandex-token": "YC_TOKEN" },
-    },
-    oci: {
-      required: ["oci-config-file-profile", "oci-subnet-id", "oci-compartment-id", "oci-availability-domain", "oci-display-name", "oci-shape", "oci-ocpus", "oci-memory-in-gbs", "oci-boot-volume-size-in-gbs", "oci-boot-volume-vpus-per-gb"],
-      secrets: [], tofuEnv: {},
-    },
-    "no-infra": {
-      required: ["no-infra-compute-ip", "no-infra-compute-user", "no-infra-compute-sudoer", "no-infra-compute-uid"],
-      secrets: [], tofuEnv: {},
-    },
-  },
+  "provider-compute": Object.fromEntries(Object.entries(registry.compute).map(([name, entry]) => [name, {required: [...entry.required], secrets: [...entry.secrets], tofuEnv: {...entry["tofu-env"]}}])),
   "provider-smtp": {
     resend: { required: [], secrets: ["resend-api-key", "resend-password"], tofuEnv: { "resend-api-key": "RESEND_API_KEY" } },
     "no-infra": {
@@ -147,7 +112,7 @@ export function deployGroups(opts: Opts): DeployGroup[] {
 }
 
 export function stateErrors(opts: Opts): string[] {
-  const errors: string[] = [];
+  const errors: string[] = machine.errors(opts);
   for (const key of ["profile", "workdir", ...slotKeys(opts, "required")]) {
     if (placeholder(opts[key])) errors.push(`${key} is required`);
   }

@@ -1,3 +1,4 @@
+import * as machine from "./machine.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runtime, type ExecResult } from "red/runtime";
@@ -187,8 +188,10 @@ export async function describeReport(input: Opts, runner: Runner = run, resolve 
   let detail: string | undefined;
   let computeDetail: string | undefined;
   if (resolve) {
-    const [compute, smtp] = await Promise.all([tofuOutputParams(runner, opts, "tofu-compute"), tofuOutputParams(runner, opts, "tofu-smtp")]);
-    opts = { ...opts, ...compute.params, ...smtp.params };
+    const loaded = await machine.load(opts);
+    const compute = {params: loaded["once/compute-params"] as Record<string,unknown> ?? {}, detail: loaded["red/err"]};
+    const smtp = await tofuOutputParams(runner, opts, "tofu-smtp");
+    opts = { ...opts, ip: undefined, ...compute.params, ...smtp.params };
     computeDetail = compute.detail;
     detail = [compute.detail, smtp.detail].filter(Boolean).join("; ") || undefined;
   }

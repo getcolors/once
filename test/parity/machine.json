@@ -1,0 +1,86 @@
+[
+  {
+    "name": "managed recorded identity",
+    "opts": {
+      "profile": "deployment",
+      "provider-compute": "digitalocean"
+    },
+    "result": {
+      "status": "present",
+      "cluster": {
+        "nodes": [
+          {
+            "node_id": "0",
+            "provider": "digitalocean",
+            "provider_id": "123",
+            "name": "cloud-label",
+            "ip": "203.0.113.8",
+            "vpc_ip": null,
+            "user": "root",
+            "sudoer": "root"
+          }
+        ]
+      },
+      "key": {
+        "private_key_path": "/tmp/deployment"
+      }
+    }
+  },
+  {
+    "name": "external identity",
+    "opts": {
+      "profile": "deployment",
+      "provider-compute": "digitalocean",
+      "digitalocean-ssh-keys": [
+        "existing-key"
+      ]
+    },
+    "result": {
+      "status": "present",
+      "cluster": {
+        "nodes": [
+          {
+            "node_id": "0",
+            "provider": "digitalocean",
+            "provider_id": "123",
+            "name": "cloud-label",
+            "ip": "203.0.113.8",
+            "vpc_ip": null,
+            "user": "root",
+            "sudoer": "root"
+          }
+        ]
+      },
+      "key": {
+        "private_key_path": "/tmp/external"
+      }
+    }
+  },
+  {
+    "name": "build identity",
+    "opts": {
+      "profile": "deployment",
+      "provider-compute": "digitalocean"
+    },
+    "result": {
+      "status": "planned",
+      "cluster": {
+        "nodes": [
+          {
+            "node_id": "0",
+            "provider": "digitalocean",
+            "provider_id": "123",
+            "name": "cloud-label",
+            "ip": "203.0.113.8",
+            "vpc_ip": null,
+            "user": "root",
+            "sudoer": "root"
+          }
+        ]
+      },
+      "key": {
+        "private_key_path": "$HOME/.ssh/deployment"
+      }
+    }
+  }
+]

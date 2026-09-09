@@ -1,120 +1,50 @@
 ---
 name: package-once-green
-description: Creates and operates production single-server Basecamp ONCE deployments with Green, OpenTofu, and Ansible. Use when initializing an ONCE project, generating colors.yml, selecting cloud/SMTP/DNS/state providers, building or dry-running configuration, provisioning, deleting, or describing an ONCE server.
+description: Create and operate single-server Basecamp ONCE deployments with Green. Use for colors.yml configuration, builds, dry-runs, provisioning, deletion and status reports.
 license: MIT
 ---
 
 # ONCE with Green
 
-Use this skill to initialize or operate an ONCE deployment in the user's current directory.
+Use the bundled `green` launcher in the deployment directory. It runs with
+Babashka and resolves immutable package dependencies. Read
+[configuration.md](references/configuration.md) before changing desired state.
+Read [github-deploy.md](references/github-deploy.md) when adding continuous
+deployment to an application's repository.
 
-## Requirements
+The package calls colors-compute for one host. The library owns provider
+selection, credentials, remote state and SSH key lifecycle. Update its dependency
+to obtain provider support; do not add a compute template or provider branch to
+this package. ONCE owns application configuration, SMTP, DNS and GitHub publishing.
 
-Babashka runs the launcher. `create` and `delete` also require OpenTofu and Ansible. `describe` requires OpenTofu and OpenSSH locally, `docker` and passwordless `sudo -n` on the remote host, and `skopeo` locally for image-digest comparison. Provider credentials use `COLORS_PAR_*` variables, the one namespace every colour shares, except OCI, which uses the profile named in `~/.oci/config`, and S3, which uses OpenTofu's ambient AWS credential chain.
+Keep secrets in `COLORS_PAR_*` environment variables. Ask for variable names
+and whether they are set, never their values. Do not read `.envrc.private` or
+private keys. Never read generated `.colors/` as source or edit it. Use one color
+at a time for a deployment.
 
-## Non-negotiable safety rules
+For initialization, preserve existing desired state and unrelated files. Copy
+the bundled launcher, make it executable, and create or revise `colors.yml`
+with non-secret settings. Ignore generated output and private environment files.
+Validate with `./green build` and `./green create --dry-run`. These commands
+contact no provider and do not prove credentials or live health.
 
-- Never ask the user to paste a secret into chat.
-- Never put API tokens, passwords, private keys, access keys, or application secret values in `colors.yml`, `green`, shell history, logs, or generated examples. Launcher-managed provider credentials and application secrets use a `COLORS_PAR_*` environment variable named after the key it fills. S3 uses OpenTofu's ambient AWS credential chain, OCI uses the configured profile in `~/.oci/config`, and SSH private keys remain in `ssh-agent`; never copy those credentials into project files.
-- Ask only for the **names** of application-secret environment variables and whether required variables are set. Suggest the user keep those exports in a gitignored file such as `.envrc.private`, never inline in a command their shell history records.
-- Public SSH keys are not secrets. Read only a user-approved `.pub` file; never read a private SSH key. Yandex needs that public content in `:compute-pubkey` only when the user brings their own key — by default the machine keypair is generated. OCI is the exception: `:oci-ssh-authorized-keys` holds the *path* to a public-key file that OpenTofu reads at plan time, so record the path and never inline that file's contents.
-- Do not overwrite an existing `green` or `colors.yml` without explicit approval. If an existing project is valid, operate it instead of regenerating it.
-- If the launcher reports a contract mismatch, its pinned commit is older than the launcher itself. Re-copy `green` from an updated skill; there is no command in the project that fixes it.
-- Default to `build` and `create --dry-run`. Run a real `create` or `delete` only after the user explicitly confirms that exact operation.
-- `build` and `create --dry-run` are credential-free by design and check no `COLORS_PAR_*` at all. A clean dry-run says nothing about whether real provisioning would authenticate; never report it as credential validation.
-- Before delete, remind the user that `:compute-prevent-destroy` defaults to `true`. Authorize an intentional delete with `COLORS_PAR_COMPUTE_PREVENT_DESTROY=false` (or its `COLORS_PAR_*` alias) rather than editing desired state.
-- Never edit `.colors/`. Green, Red, and Blue may use it interchangeably, but two implementations must never run concurrently against the same state.
+A real create or delete needs user authorization. Existing authorization for
+the task applies; do not ask again. Create validates, converges compute, then
+SMTP, DNS, verification and application configuration. Compute ownership failure
+stops subsequent resource creation. Delete loads recorded compute inventory,
+withdraws published credentials and SSH configuration, removes DNS and SMTP,
+then destroys compute. The library removes its SSH key after successful destroy.
+Keep `compute-prevent-destroy: true` in desired state; an authorized delete can
+use `COLORS_PAR_COMPUTE_PREVENT_DESTROY=false` for that invocation.
 
-Read [references/configuration.md](references/configuration.md) before generating or changing desired state, and before any real `create` or `delete`. Read [references/github-deploy.md](references/github-deploy.md) before writing or changing a GitHub Actions workflow.
+Existing monolithic compute state requires an explicit reviewed migration. Do
+not run a new create against it to discover what happens. Missing, unreadable or
+inconsistent state is a refusal, not permission to recreate resources. A failed
+operation retains state needed for inspection and retry.
 
-## Initialize in the current directory
-
-Determine this skill's directory from the loaded `SKILL.md` path. Do not assume the skill directory is the current working directory.
-
-Gather these non-secret inputs conversationally:
-
-- profile name and working directory (default `.colors`)
-- one or more applications: hostname, container image, and optional mapping of container variable names to the `colors.yml` keys holding their values. Hostnames may span domains; Green manages every derived DNS zone and Resend sending domain, and only the listed hostnames get application DNS records
-- compute, SMTP, DNS, and backend providers
-- the selected providers' non-secret settings
-- `:github` on any application whose deploy credentials ONCE should publish, as `owner/repo`. Deploy keys themselves are never collected: ONCE generates one per repository on every create and publishes it to a GitHub environment named after the profile, so ask only for `COLORS_PAR_GITHUB_TOKEN`. Whenever an application names a repository, ask whether the user also wants continuous deployment — see [Continuous deployment](#continuous-deployment) below. The machine SSH key needs no collection by default: with no machine-key setting in desired state ONCE generates a profile-named keypair in the operator's `~/.ssh` on the first real create and registers the public half with the provider (SSH Keypair Standard, `workspace/standards/ssh-keypair.md`). Only when the user wants their own key, collect the provider's setting: `:compute-pubkey` on Yandex (installed for the `ubuntu` user through instance metadata), a key already registered with the provider (`:digitalocean-ssh-keys`, `:hcloud-ssh-keys`, `:vultr-ssh-keys`), or a local public-key file path (`:oci-ssh-authorized-keys`)
-
-Do not request secret values. Tell the user which `COLORS_PAR_*` names and native credential mechanisms are required for their selected providers.
-
-After confirming the inputs:
-
-- Copy the bundled `green` file from this skill directory to `./green` and make it executable.
-- Write `./colors.yml` following the reference: keep provider and setting keys in the root map, and nest applications exactly under `once.applications`. Omit all secret keys and values.
-- Ensure the configured work directory is ignored by Git, and that any file holding `COLORS_PAR_*` exports is too. Append precise ignore entries without replacing unrelated `.gitignore` content.
-- Verify that `colors.yml` contains no credential, password, access-key, or private-key fields. Do not read environment-variable values; verify presence only. Confirm that `green` is an exact copy of the bundled launcher.
-- Run `./green build`.
-- Run `./green create --dry-run`.
-- Report generated paths and required environment-variable names, but never their values. State plainly that neither check validated credentials, and list which `COLORS_PAR_*` names a real `create` will require.
-
-If verification fails, correct only `colors.yml`, the ignore entries, or the copied `green` launcher as appropriate, then rerun the safe checks. Never edit the configured work directory; it is generated output. Do not proceed to real provisioning automatically.
-
-## Operate an existing project
-
-Read `colors.yml` first and identify its providers and work directory. Use:
-
-```sh
-./green build
-./green create --dry-run
-./green create
-./green describe
-./green delete --dry-run
-./green delete
-```
-
-Every command reads `./colors.yml` unless `-f|--file` names another desired-state file, which is how one project holds several stacks (`./green build -f production.edn`).
-
-`build` renders OpenTofu and Ansible configuration without invoking them. Dry-run touches nothing. `describe` reads the OpenTofu outputs already in the work directory, probes SSH, lists remote ONCE applications through `once list` and `docker inspect` under passwordless `sudo`, and uses `skopeo` when available to compare image digests. Compute is reported as `running`, `unreachable` (state holds an address but SSH failed), or `absent` (the `tofu-compute` stage has no outputs, so it was never created); `no-infra` hosts are never `absent`, since OpenTofu does not create them. Describe exits non-zero when compute is not `running` and when the remote `once` command is missing; every other live check is a soft failure named in its output, so read the report rather than the exit status alone.
-
-Before real create/delete, check required `COLORS_PAR_*` variables by presence only. Do not print them. For OCI, S3, and SSH, confirm that the selected native credential mechanism is configured without reading secret material. Let the launcher perform its own final desired-state and environment validation.
-
-## Continuous deployment
-
-Publishing credentials and consuming them are two different things. `create`
-publishes `SSH_PRIVATE_KEY`, `SERVER_IP`, `SERVER_USER`, and `SSH_KNOWN_HOSTS`
-into a GitHub Actions environment named after the profile; nothing reads them
-until a workflow does. So whenever an application names a repository under
-`:github`, ask:
-
-> Should I also add the GitHub Actions workflow that builds the image and pings
-> the server on every push to `main`?
-
-Do not ask when no application names a repository — without `:github` nothing
-is published and the workflow would have no credentials to read.
-
-If the user says yes, read [references/github-deploy.md](references/github-deploy.md)
-and write the workflow with `PROFILE` replaced by the configured profile and
-the environment URL set to the application's host. Where it goes matters: the
-workflow belongs in the **application's** repository, which is frequently not
-the directory holding `colors.yml`. Check the current repository's `origin`
-remote against `owner/repo` first.
-
-- It matches: write `.github/workflows/deploy.yml`. Ask before overwriting an
-  existing workflow, and never merge into one silently.
-- It does not match, or the directory is not that repository: do not write into
-  the wrong repository. Show the adapted YAML and name the path it belongs at.
-
-Say plainly that the workflow builds from a `Dockerfile` the repository must
-already have, that the image it publishes has to equal the application's
-`:image`, and that the first run only succeeds after a real `create` has
-populated the environment.
-
-If the user says no, that is a complete answer: `ssh -T deploy@SERVER_IP </dev/null`
-from anywhere with the key is the whole deploy interface, and
-`auto_update: true` on an application lets ONCE update it without any ping.
-
-## Generated application environment
-
-Represent application environment as a map from container variable name to the flat `colors.yml` key that holds its value:
-
-```yaml
-env:
-  DATABASE_URL: app-database-url
-  SECRET_KEY_BASE: app-secret-key-base
-```
-
-Never emit `KEY=secret` values, and never add the referenced keys to `colors.yml`. The user exports `COLORS_PAR_APP_DATABASE_URL` and `COLORS_PAR_APP_SECRET_KEY_BASE`; the rendered Ansible file carries a lookup of those variables rather than their values, so secrets are resolved when the play runs and never land in desired state or in generated output. Tell the user which `COLORS_PAR_*` names their configuration requires.
+Use `./green describe` for recorded compute status and application inspection.
+It reads compute through the library and requires a verified address before SSH.
+For an application naming a GitHub repository, establish whether continuous
+deployment is part of the user's request before adding its workflow. Confirm
+the target repository matches `owner/repo`; the deployment repository may be a
+different checkout. Follow the linked reference for the exact published values.

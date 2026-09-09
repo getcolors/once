@@ -9,11 +9,13 @@
    :workdir ".green"
    :once {:applications [{:host "www.example.com"
                           :image "ghcr.io/example/site:latest"}]}
-   :provider-compute "no-infra"
+   :provider-compute "digitalocean"
+   :digitalocean-region "ams3" :digitalocean-size "s-1vcpu-1gb" :digitalocean-image "ubuntu"
+   :compute-ssh-sources ["0.0.0.0/0"] :compute-http-sources ["0.0.0.0/0"]
    :provider-smtp "no-infra"
    :provider-dns "no-infra"
-   :provider-backend "local"
-   :compute-prevent-destroy true
+   :provider-backend "s3" :s3-bucket "once-tests" :s3-region "eu-west-1"
+   :compute-prevent-destroy true :do-token "fixture"
    :no-infra-compute-ip "203.0.113.10"
    :no-infra-compute-user "root"
    :no-infra-compute-sudoer "root"
@@ -33,7 +35,7 @@
 
 (deftest missing-provider-keys-are-reported-per-provider
   (testing "each compute provider asks only for its own keys"
-    (let [errors (sut/state-errors (assoc valid :provider-compute "digitalocean"))]
+    (let [errors (sut/state-errors (dissoc (assoc valid :provider-compute "digitalocean") :digitalocean-region))]
       (is (some #(str/includes? % ":digitalocean-region") errors))
       (is (not-any? #(str/includes? % ":hcloud-") errors)))
     (let [errors (sut/state-errors (assoc valid :provider-compute "yandex"))]
@@ -119,7 +121,7 @@
   (testing "only the chosen providers' credentials are required"
     (let [errors (sut/secret-errors (assoc valid
                                            :provider-compute "digitalocean"
-                                           :provider-dns "cloudflare"))]
+                                           :provider-dns "cloudflare" :do-token nil))]
       (is (= #{"required credential is not set: COLORS_PAR_DO_TOKEN"
                "required credential is not set: COLORS_PAR_CLOUDFLARE_API_TOKEN"
                "required credential is not set: COLORS_PAR_NO_INFRA_SMTP_PASSWORD"}
@@ -184,7 +186,7 @@
            (sut/tofu-env {:provider-compute "digitalocean"} :provider-compute)))
     (is (= {:yandex-token "YC_TOKEN"}
            (sut/tofu-env {:provider-compute "yandex"} :provider-compute)))
-    (is (= {} (sut/tofu-env {:provider-compute "no-infra"} :provider-compute))))
+    (is (= {} (sut/tofu-env {:provider-compute "oci"} :provider-compute))))
 
   (testing "the resend password is a secret tofu never receives"
     (let [{:keys [secrets tofu-env]} (get-in sut/providers [:provider-smtp "resend"])]

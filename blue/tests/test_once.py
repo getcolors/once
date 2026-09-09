@@ -17,7 +17,9 @@ valid = {
     "provider-compute": "digitalocean",
     "provider-smtp": "resend",
     "provider-dns": "cloudflare",
-    "provider-backend": "local",
+    "provider-backend": "s3",
+    "s3-bucket": "once-tests", "s3-region": "eu-west-1",
+    "compute-ssh-sources": ["0.0.0.0/0"], "compute-http-sources": ["0.0.0.0/0"],
     "compute-prevent-destroy": True,
     "digitalocean-name": "once",
     "digitalocean-region": "ams3",
@@ -94,7 +96,7 @@ async def test_validation_and_lifecycle_safety():
 
 
 def test_create_build_and_delete_use_inverse_graphs():
-    assert wire_fn("once/start", {"blue/event": "build"})[1:] == ("once/tofu-compute", "once/tofu-smtp")
+    assert wire_fn("once/start", {"blue/event": "build"})[1:] == ("once/tofu-compute",)
     # Credentials are withdrawn before anything is destroyed, and publishing
     # follows the configured host rather than the workstation.
     assert wire_fn("once/start", {"blue/event": "delete"})[1:] == ("once/github",)
@@ -115,7 +117,7 @@ async def test_dry_run_needs_no_credentials_and_touches_nothing(tmp_path):
 async def test_a_build_renders_the_complete_production_tree_without_tools(tmp_path):
     result = await run(once_workflow, {**valid, "workdir": str(tmp_path), "blue/event": "build"})
     assert result["blue/exit"] == 0
-    assert len([path for path in (tmp_path / "test").rglob("*") if path.is_file()]) == 21
+    assert len([path for path in (tmp_path / "test").rglob("*") if path.is_file()]) == 23
 
 
 async def test_describe_helpers_are_process_free_with_an_injected_runner():
@@ -144,3 +146,37 @@ def test_container_matching_prefers_the_once_label_host():
     unlabelled = [{"Name": "/app-1", "Config": {"Image": "ghcr.io/org/site:latest", "Labels": {"traefik.http.routers.app.rule": "Host(`www.example.com`)"}}}]
     assert _container_for_host(unlabelled, "www.example.com") is not None
     assert _container_for_host(unlabelled, "example.com") is None
+
+async def test_compute_refusal_prevents_application_resource_creation(monkeypatch):
+    from package_once_blue import machine, tools
+    calls = []
+
+    async def refuse(*_args):
+        return {'status': 'error', 'errors': ['legacy state requires migration']}
+
+    async def unexpected(_opts):
+        calls.append('smtp')
+        raise AssertionError('SMTP must not run after compute refusal')
+
+    monkeypatch.setattr(machine, 'orchestrate', refuse)
+    monkeypatch.setattr(tools, 'tofu_smtp_step', unexpected)
+    result = await run(once_workflow, {**valid, 'blue/event': 'create', 'do-token': 'fixture', 'resend-api-key': 'fixture', 'resend-password': 'fixture', 'cloudflare-api-token': 'fixture'})
+    assert result['blue/exit'] == 1
+    assert result['blue/err'] == 'legacy state requires migration'
+    assert calls == []
+
+
+async def test_recorded_inventory_supplies_application_and_ssh_parameters(monkeypatch):
+    from package_once_blue import machine
+    node = {'node_id': '0', 'provider': 'digitalocean', 'provider_id': '123', 'name': 'override', 'ip': '203.0.113.8', 'vpc_ip': None, 'user': 'root', 'sudoer': 'root'}
+
+    async def read(*_args):
+        return {'status': 'present', 'cluster': {'nodes': [node]}, 'key': {'private_key_path': '/tmp/identity'}}
+
+    monkeypatch.setattr(machine, 'read_deployment', read)
+    result = await machine.load(valid, {})
+    assert result['once/compute-params']['ip'] == node['ip']
+    assert result['profile'] == 'test'
+    assert result['name'] == 'override'
+    assert result['ssh-private-key-path'] == '/tmp/identity'
+    assert result['ssh-keygen'] is False

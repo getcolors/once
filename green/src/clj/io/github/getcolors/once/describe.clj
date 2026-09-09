@@ -5,7 +5,7 @@
   applications. Compute is `absent` when OpenTofu holds no compute outputs,
   `unreachable` when it does but SSH fails, and `running` otherwise; anything
   but `running`, and a missing remote `once` command, marks the step failed."
-  (:require
+  (:require [io.github.getcolors.once.machine :as machine]
    [cheshire.core :as json]
    [clojure.java.io :as io]
    [clojure.string :as str]
@@ -407,10 +407,11 @@
 
 (defn- resolve-tofu-opts
   [opts run-fn]
-  (let [compute (tofu-output-params run-fn opts "tofu-compute")
+  (let [loaded (machine/load-inventory opts)
+        compute {:params (:once/compute-params loaded) :detail (:green/err loaded)}
         smtp (tofu-output-params run-fn opts "tofu-smtp")
         details (remove str/blank? [(:detail compute) (:detail smtp)])]
-    {:opts (merge opts (:params compute) (:params smtp))
+    {:opts (merge (dissoc opts :ip) (:params compute) (:params smtp))
      :detail (when (seq details) (str/join "; " details))
      :compute-detail (:detail compute)}))
 

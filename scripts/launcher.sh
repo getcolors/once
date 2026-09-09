@@ -167,7 +167,7 @@ ok "a re-pin lands in its own cache entry"
   XDG_CACHE_HOME="$cache" COLORS_PAR_WORKDIR="$tmp/out" \
     ./red build -f "$root/test/parity/colors.yml" >/dev/null) ||
   fail "a bootstrapped launcher could not run a build"
-[ -f "$tmp/out/parity/tofu-compute/main.tf" ] ||
+[ -f "$tmp/out/parity/tofu-compute/nodes/0/node-none.tf.json" ] ||
   fail "the bootstrapped build rendered no compute stage"
 ok "a bootstrapped launcher renders a full work tree"
 

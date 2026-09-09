@@ -4,6 +4,8 @@ import re
 from typing import Any
 
 from blue.cli import par_name
+from colors_compute.contract import registry
+from . import machine
 
 # The machine-key keys (*-ssh-authorized-keys, *-ssh-keys, compute-pubkey)
 # are deliberately not in required: their absence selects keygen mode, where
@@ -11,17 +13,7 @@ from blue.cli import par_name
 # Standard (workspace standards/ssh-keypair.md). A value that is present is
 # opt-out mode and is used exactly as before.
 providers: dict[str, dict[str, dict[str, Any]]] = {
-    "provider-compute": {
-        "azure": {"required": ["azure-subscription-id", "azure-location", "azure-resource-group", "azure-name", "azure-vm-size", "azure-image-publisher", "azure-image-offer", "azure-image-sku", "azure-image-version", "azure-vnet-cidr", "azure-subnet-cidr", "azure-boot-disk-size-gb"], "secrets": [], "tofu-env": {}},
-        "aws": {"required": ["aws-region", "aws-availability-zone", "aws-name", "aws-instance-type", "aws-image-id", "aws-vpc-cidr", "aws-subnet-cidr", "aws-root-volume-size-gb"], "secrets": [], "tofu-env": {}},
-        "google": {"required": ["google-project", "google-region", "google-zone", "google-name", "google-machine-type", "google-image-project", "google-image-family", "google-image-id", "google-subnet-cidr", "google-boot-disk-size-gb"], "secrets": [], "tofu-env": {}},
-        "digitalocean": {"required": ["digitalocean-name", "digitalocean-region", "digitalocean-size", "digitalocean-image"], "secrets": ["do-token"], "tofu-env": {"do-token": "DIGITALOCEAN_TOKEN"}},
-        "hcloud": {"required": ["hcloud-name", "hcloud-image", "hcloud-server-type", "hcloud-location"], "secrets": ["hcloud-token"], "tofu-env": {"hcloud-token": "HCLOUD_TOKEN"}},
-        "vultr": {"required": ["vultr-name", "vultr-region", "vultr-plan", "vultr-os-id"], "secrets": ["vultr-api-key"], "tofu-env": {"vultr-api-key": "VULTR_API_KEY"}},
-        "yandex": {"required": ["yandex-cloud-id", "yandex-folder-id", "yandex-zone", "yandex-image-family", "yandex-name", "yandex-subnet-cidr", "yandex-platform-id", "yandex-cores", "yandex-memory-gb", "yandex-core-fraction", "yandex-disk-size-gb"], "secrets": ["yandex-token"], "tofu-env": {"yandex-token": "YC_TOKEN"}},
-        "oci": {"required": ["oci-config-file-profile", "oci-subnet-id", "oci-compartment-id", "oci-availability-domain", "oci-display-name", "oci-shape", "oci-ocpus", "oci-memory-in-gbs", "oci-boot-volume-size-in-gbs", "oci-boot-volume-vpus-per-gb"], "secrets": [], "tofu-env": {}},
-        "no-infra": {"required": ["no-infra-compute-ip", "no-infra-compute-user", "no-infra-compute-sudoer", "no-infra-compute-uid"], "secrets": [], "tofu-env": {}},
-    },
+    "provider-compute": registry()["compute"],
     "provider-smtp": {
         "resend": {"required": [], "secrets": ["resend-api-key", "resend-password"], "tofu-env": {"resend-api-key": "RESEND_API_KEY"}},
         "no-infra": {"required": ["no-infra-smtp-server", "no-infra-smtp-port", "no-infra-smtp-username"], "secrets": ["no-infra-smtp-password"], "tofu-env": {}},
@@ -99,7 +91,7 @@ def deploy_groups(opts: dict) -> list[dict]:
 
 
 def state_errors(opts: dict) -> list[str]:
-    errors: list[str] = []
+    errors: list[str] = machine.errors(opts)
     for key in ["profile", "workdir", *_slot_keys(opts, "required")]:
         if placeholder(opts.get(key)):
             errors.append(f"{key} is required")

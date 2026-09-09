@@ -11,6 +11,7 @@ from blue.runtime import ExecResult, runtime
 from blue.cli import read_pars
 
 from .ssh import identity_args, with_machine_key
+from . import machine
 from .tools import backend_credential_env, tool_dir
 
 Runner = Callable[..., Awaitable[ExecResult]]
@@ -183,9 +184,10 @@ async def _tofu_params(runner: Runner, opts: dict, tool: str) -> dict:
 async def describe_report(input: dict, runner: Runner = _run, resolve: bool = True) -> dict:
     opts, detail, compute_detail = input, None, None
     if resolve:
-        compute = await _tofu_params(runner, opts, "tofu-compute")
+        loaded = await machine.load(opts)
+        compute = {"params": loaded.get("once/compute-params", {}), "detail": loaded.get("blue/err")}
         smtp = await _tofu_params(runner, opts, "tofu-smtp")
-        opts = {**opts, **compute["params"], **smtp["params"]}
+        opts = {**{k: v for k, v in opts.items() if k != "ip"}, **compute["params"], **smtp["params"]}
         compute_detail = compute.get("detail")
         detail = "; ".join(x for x in [compute.get("detail"), smtp.get("detail")] if x) or None
     compute = await _compute_status(runner, opts, compute_detail)

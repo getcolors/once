@@ -701,11 +701,11 @@ Map DATABASE_URL to the key :site-database-url.</code></pre>
       <p>Each implementation executes the same directed acyclic graph. Independent work runs concurrently; downstream steps receive outputs from their upstream branches.</p>
 
       <h3>Create and build</h3>
-      <pre class="diagram"><code>                    ┌─ tofu-compute ─┐                             ┌─ ansible-local
-start + validation ─┤                ├─ tofu-dns ─ tofu-smtp-post ─┤
-                    └─ tofu-smtp ────┘                             └─ ansible-remote ─ github</code></pre>
+      <pre class="diagram"><code>start + validation → compute → SMTP → DNS → SMTP verification
+                                            ├─ local SSH config
+                                            └─ remote application → GitHub</code></pre>
       <div class="flow-list">
-        <div class="flow-item"><b>1 · Compute + SMTP</b><span>Provisioned concurrently.</span></div>
+        <div class="flow-item"><b>1 · Compute + SMTP</b><span>Compute finishes before SMTP, so ownership refusals stop application resource creation.</span></div>
         <div class="flow-item"><b>2 · DNS</b><span>Joins the server IP and SMTP records.</span></div>
         <div class="flow-item"><b>3 · SMTP post</b><span>Verifies the sending domain after DNS.</span></div>
         <div class="flow-item"><b>4 · Local setup</b><span>Writes the managed SSH config block.</span></div>
@@ -768,8 +768,8 @@ COLORS_PAR_DIGITALOCEAN_SIZE=s-2vcpu-2gb ./green create --dry-run</code></pre>
       <pre><code class="language-text">.colors/
 └── production/
     ├── tofu-compute/
-    │   ├── backend.tf.json
-    │   └── main.tf
+    │   ├── shared/*.tf.json
+    │   └── nodes/0/*.tf.json
     ├── tofu-smtp/
     │   ├── backend.tf.json
     │   └── main.tf
@@ -794,7 +794,7 @@ COLORS_PAR_DIGITALOCEAN_SIZE=s-2vcpu-2gb ./green create --dry-run</code></pre>
         └── library/once</code></pre>
       <ul>
         <li>The work directory is generated output and should be ignored by Git.</li>
-        <li>Local OpenTofu state remains in each tool directory. S3 and R2 use remote keys of the form <code>&lt;profile&gt;/&lt;tool&gt;.tfstate</code>.</li>
+        <li>Compute uses remote shared and per-node state under <code>&lt;profile&gt;/compute/</code>. SMTP and DNS retain <code>&lt;profile&gt;/&lt;tool&gt;.tfstate</code>. Existing monolithic compute state needs an explicit migration.</li>
         <li>Generated Ansible files contain environment lookups, not application or SMTP secret values — provided each application's <code>env</code> uses the map form, which is the one that defers to a <code>COLORS_PAR_*</code> lookup.</li>
         <li><code>apps.tf.json</code> and <code>smtp.tf.json</code> are generated for the Cloudflare and Yandex DNS providers; <code>no-infra</code> renders <code>main.tf</code> alone.</li>
         <li>The <code>ansible-local</code> play writes a managed <code>Host &lt;profile&gt;</code> block into <code>~/.ssh/config</code>, delimited by its own markers. Delete removes that block and leaves the rest of the file untouched.</li>
@@ -1002,13 +1002,7 @@ oci-ssh-authorized-keys: /home/user/.ssh/once.pub</code></pre>
         The boot image is not something an existing instance can be moved to in place. A changed value destroys and recreates the VM, taking any data not held elsewhere with it. <code>compute-prevent-destroy: true</code> — the default — turns that into a refused apply rather than a silent rebuild.
       </div>
 
-      <h3>Existing server</h3>
-      <pre><code class="language-yaml">provider-compute: no-infra
-no-infra-compute-ip: 203.0.113.10
-no-infra-compute-user: root
-no-infra-compute-sudoer: root
-no-infra-compute-uid: 0</code></pre>
-      <p>No compute resource or API credential is required. The server must be reachable using the configured user and an SSH identity already loaded into <code>ssh-agent</code>. The host is reported under <code>profile</code>, so it needs no name of its own.</p>
+      <p>Compute is provided by the pinned colors-compute library. Existing-server no-infra mode is unsupported.</p>
     </section>
 
     <section id="smtp-providers">

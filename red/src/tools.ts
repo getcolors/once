@@ -1,3 +1,4 @@
+import * as machine from "./machine.ts";
 import { ansibleStep, ansibleWithSpec } from "red/ansible";
 import { contentSpec, PRESERVE_JINJA_DELIMITERS, scaffold, type RenderOpts, type Spec, type Template } from "red/scaffold";
 import { stageDir } from "red/cli";
@@ -20,31 +21,11 @@ import smtpPostNoInfra from "../resources/tools/tofu-smtp-post/no-infra/main.tf"
 import smtpPostResend from "../resources/tools/tofu-smtp-post/resend/main.tf" with { type: "text" };
 import smtpNoInfra from "../resources/tools/tofu-smtp/no-infra/main.tf" with { type: "text" };
 import smtpResend from "../resources/tools/tofu-smtp/resend/main.tf" with { type: "text" };
-import computeAzure from "../resources/tools/tofu/azure/main.tf" with { type: "text" };
-import computeAws from "../resources/tools/tofu/aws/main.tf" with { type: "text" };
-import computeDigitalocean from "../resources/tools/tofu/digitalocean/main.tf" with { type: "text" };
-import computeGoogle from "../resources/tools/tofu/google/main.tf" with { type: "text" };
-import computeHcloud from "../resources/tools/tofu/hcloud/main.tf" with { type: "text" };
-import computeNoInfra from "../resources/tools/tofu/no-infra/main.tf" with { type: "text" };
-import computeOci from "../resources/tools/tofu/oci/main.tf" with { type: "text" };
-import computeVultr from "../resources/tools/tofu/vultr/main.tf" with { type: "text" };
-import computeYandex from "../resources/tools/tofu/yandex/main.tf" with { type: "text" };
 import { appsDomains, registrableDomain } from "./utils.ts";
 import { providers } from "./validate.ts";
 
 const templateOpts: RenderOpts = PRESERVE_JINJA_DELIMITERS;
 
-const computeTemplates: Record<string, Template> = {
-  azure: { name: "tools/tofu/azure/main.tf", content: computeAzure },
-  aws: { name: "tools/tofu/aws/main.tf", content: computeAws },
-  google: { name: "tools/tofu/google/main.tf", content: computeGoogle },
-  digitalocean: { name: "tools/tofu/digitalocean/main.tf", content: computeDigitalocean },
-  hcloud: { name: "tools/tofu/hcloud/main.tf", content: computeHcloud },
-  vultr: { name: "tools/tofu/vultr/main.tf", content: computeVultr },
-  yandex: { name: "tools/tofu/yandex/main.tf", content: computeYandex },
-  oci: { name: "tools/tofu/oci/main.tf", content: computeOci },
-  "no-infra": { name: "tools/tofu/no-infra/main.tf", content: computeNoInfra },
-};
 const smtpTemplates: Record<string, Template> = {
   resend: { name: "tools/tofu-smtp/resend/main.tf", content: smtpResend },
   "no-infra": { name: "tools/tofu-smtp/no-infra/main.tf", content: smtpNoInfra },
@@ -86,24 +67,7 @@ export function backendCredentialEnv(opts: Opts): Record<string, string> | undef
   return credentialEnv(opts);
 }
 
-export function fallbackComputeParams(opts: Opts): Record<string, unknown> {
-  const name = String(opts.profile ?? "once");
-  switch (opts["provider-compute"]) {
-    case "azure": return { ip: "192.168.0.1", sudoer: "ubuntu", uid: "1000", name, user: "ubuntu" };
-    case "aws": return { ip: "192.168.0.1", sudoer: "ubuntu", uid: "1000", name, user: "ubuntu" };
-    case "oci": return { ip: "192.168.0.1", sudoer: "ubuntu", uid: "1001", name, user: "ubuntu" };
-    case "yandex": return { ip: "192.168.0.1", sudoer: "ubuntu", uid: "1000", name, user: "ubuntu" };
-    case "google": return { ip: "192.168.0.1", sudoer: "ubuntu", uid: "1000", name, user: "ubuntu" };
-    case "no-infra": return {
-      ip: opts["no-infra-compute-ip"] ?? "192.168.0.1",
-      sudoer: opts["no-infra-compute-sudoer"] ?? "root",
-      ...(opts["no-infra-compute-uid"] !== undefined ? { uid: opts["no-infra-compute-uid"] } : {}),
-      name,
-      user: opts["no-infra-compute-user"] ?? "root",
-    };
-    default: return { ip: "192.168.0.1", sudoer: "root", name, user: "root" };
-  }
-}
+export function fallbackComputeParams(opts: Opts): Record<string, unknown> { return machine.fallbackParams(opts); }
 
 export function fallbackSmtpParams(opts: Opts): Record<string, unknown> {
   if (opts["provider-smtp"] === "no-infra") {
@@ -144,12 +108,7 @@ function withZones(opts: Opts): Opts {
   return { ...opts, zones, "zones-hcl": tofu.hclList(zones) };
 }
 
-export function tofuComputeStep(opts: Opts): Promise<Opts> {
-  const provider = String(opts["provider-compute"] ?? "hcloud");
-  const dir = toolDir(opts, "tofu-compute");
-  const specs = [templateSpec(computeTemplates[provider]!, `${dir}/main.tf`, opts)];
-  return tofuWithSpecs(opts, dir, specs, fallbackComputeParams(opts), "once/compute-params", credentialEnv(opts, "provider-compute"));
-}
+export function tofuComputeStep(opts: Opts): Promise<Opts> { return machine.step(opts); }
 
 export function tofuSmtpStep(original: Opts): Promise<Opts> {
   const opts = withZones(original);
@@ -286,7 +245,7 @@ export function inventory(data: any): string {
   const adminsHosts = Object.fromEntries((data.hosts ?? []).map((host: string) => [`root@${host}`, {
     ansible_host: host,
     ansible_user: data.sudoer ?? "root",
-    ...(data["ssh-keygen"] ? { ansible_ssh_private_key_file: data["ssh-private-key-path"] } : {}),
+    ...(data["ssh-private-key-path"] ? { ansible_ssh_private_key_file: data["ssh-private-key-path"] } : {}),
   }]));
   return prettyJson({ all: { children: { admin: { hosts: adminsHosts }, users: { hosts: usersHosts } } } });
 }
@@ -397,18 +356,12 @@ export function ansibleLocalStep(opts: Opts): Promise<Opts> {
     templateSpec({ name: "tools/ansible-local/inventory.ini", content: ansibleLocalInventory }, `${dir}/inventory.ini`, data),
     templateSpec({ name: "tools/ansible-local/main.yml", content: ansibleLocalMain }, `${dir}/main.yml`, data),
   ];
-  // identity_block appends IdentityFile lines to the managed ~/.ssh/config
-  // block in keygen mode, so `ssh <profile>` works without an agent. Empty
-  // otherwise — the rendered block stays byte-identical to the pre-standard
-  // one.
   return ansibleWithSpec(opts, {
     dir, inventory: "inventory.ini", playbooks: { create: "main.yml", delete: "main.yml" },
     extraVars: {
-      host_alias: localHostAlias(data), ip: data.ip, user: data.user,
+      host_alias: data.profile,
+      ssh_hosts: [{name:data.profile,ip:data.ip,user:data.user,identity_file:data['ssh-private-key-path']}],
       block_state: opts["red/event"] === "delete" ? "absent" : "present",
-      identity_block: data["ssh-keygen"]
-        ? `\n    IdentityFile ${data["ssh-private-key-path"]}\n    IdentitiesOnly yes`
-        : "",
     },
   }, specs);
 }

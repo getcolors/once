@@ -22,7 +22,7 @@ from __future__ import annotations
 #    resolves the key inside the checkout, so it cannot see a keypair living
 #    in ~/.ssh and would generate a second one beside a live deployment's
 #    state.
-CONTRACT = 5
+CONTRACT = 6
 
 
 def registrable_domain(host: object) -> str | None:

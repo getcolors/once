@@ -11,6 +11,7 @@
    [green.tofu :as tofu]
    [green.workflow :as wf]
    [green.yaml :as yaml]
+   [io.github.getcolors.once.machine :as machine]
    [io.github.getcolors.once.github :as github]
    [io.github.getcolors.once.utils :as utils]
    [io.github.getcolors.once.validate :as validate]))
@@ -78,44 +79,7 @@
       :else (assoc result result-key
                    (merge fallback (or (output-params result) {}))))))
 
-(defn- fallback-compute-params
-  [{:keys [profile provider-compute] :as opts}]
-  (let [name (or profile "once")]
-    (case provider-compute
-      "azure" {:ip "192.168.0.1"
-               :sudoer "ubuntu"
-               :uid "1000"
-               :name name
-               :user "ubuntu"}
-      "aws" {:ip "192.168.0.1"
-             :sudoer "ubuntu"
-             :uid "1000"
-             :name name
-             :user "ubuntu"}
-      "oci" {:ip "192.168.0.1"
-             :sudoer "ubuntu"
-             :uid "1001"
-             :name name
-             :user "ubuntu"}
-      "yandex" {:ip "192.168.0.1"
-                :sudoer "ubuntu"
-                :uid "1000"
-                :name name
-                :user "ubuntu"}
-      "google" {:ip "192.168.0.1"
-                :sudoer "ubuntu"
-                :uid "1000"
-                :name name
-                :user "ubuntu"}
-      "no-infra" (cond-> {:ip (or (:no-infra-compute-ip opts) "192.168.0.1")
-                          :sudoer (or (:no-infra-compute-sudoer opts) "root")
-                          :name name
-                          :user (or (:no-infra-compute-user opts) "root")}
-                   (:no-infra-compute-uid opts) (assoc :uid (:no-infra-compute-uid opts)))
-      {:ip "192.168.0.1"
-       :sudoer "root"
-       :name name
-       :user "root"})))
+(defn- fallback-compute-params [opts] (machine/fallback-params opts))
 
 (def ^:private resend-smtp
   "Resend's relay is the same for every account, so it is not desired state.
@@ -141,24 +105,11 @@
                                           (utils/apps-domains opts)))
            {})))
 
-(defn tofu-compute-step
-  [opts]
-  (let [provider (or (:provider-compute opts) "hcloud")
-        dir (tool-dir opts "tofu-compute")
-        specs [(template-spec (tool-template "tofu" provider "main.tf")
-                              (str dir "/main.tf")
-                              opts)]]
-    (tofu-with-spec opts dir specs (fallback-compute-params opts) :once/compute-params
-                    (credential-env opts :provider-compute))))
+(defn tofu-compute-step [opts] (machine/step opts))
 
-(defn- with-zones
-  "Templates receive the sorted DNS zones derived from the application hosts;
-  no domain key is carried in desired state."
-  [opts]
+(defn- with-zones [opts]
   (let [zones (utils/apps-domains opts)]
-    (assoc opts
-           :zones zones
-           :zones-hcl (tofu/hcl-list zones))))
+    (assoc opts :zones zones :zones-hcl (tofu/hcl-list zones))))
 
 (defn tofu-smtp-step
   [opts]
@@ -337,7 +288,7 @@
                                (assoc result (format "root@%s" host)
                                       (cond-> {:ansible_host host
                                                :ansible_user name}
-                                        ssh-keygen
+                                        ssh-private-key-path
                                         (assoc :ansible_ssh_private_key_file
                                                ssh-private-key-path))))
                              {}
@@ -477,27 +428,9 @@
                               (str dir "/main.yml")
                               data)]
         delete? (= :delete (:green/event opts))
-        ;; The playbook's variables are Ansible's, not Selmer's, so they arrive
-        ;; as extra-vars: the local inventory targets localhost only and carries
-        ;; no host vars of its own. `name` is reserved in Ansible, hence
-        ;; host_alias. block_state drives blockinfile in both directions.
-        config {:dir dir
-                :inventory "inventory.ini"
+        config {:dir dir :inventory "inventory.ini"
                 :playbooks {:create "main.yml" :delete "main.yml"}
-                ;; identity_block appends IdentityFile lines to the managed
-                ;; ~/.ssh/config block in keygen mode, so `ssh <profile>`
-                ;; works without an agent. Empty otherwise — the rendered
-                ;; block stays byte-identical to the pre-standard one.
-                :extra-vars {:host_alias (local-host-alias data)
-                             :ip (:ip data)
-                             :user (:user data)
-                             :block_state (if delete? "absent" "present")
-                             :identity_block
-                             (if (:ssh-keygen data)
-                               (str "\n    IdentityFile "
-                                    (:ssh-private-key-path data)
-                                    "\n    IdentitiesOnly yes")
-                               "")}}]
-    ;; Delete renders the playbook so it can run, removes the managed block
-    ;; from ~/.ssh/config, and only then deletes the rendered tree.
+                :extra-vars {:host_alias (:profile data)
+                             :ssh_hosts [{:name (:profile data) :ip (:ip data) :user (:user data) :identity_file (:ssh-private-key-path data)}]
+                             :block_state (if delete? "absent" "present")}}]
     (ansible/ansible-with-spec opts config specs)))

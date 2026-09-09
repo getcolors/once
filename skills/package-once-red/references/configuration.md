@@ -1,84 +1,83 @@
-# Red ONCE configuration
+# ONCE configuration
 
-No manifest is involved. The bundled `red` carries both repositories pinned to
-full 40-character commits in its `PINS`, and resolves them itself on first run
-into `~/.cache/package-once-red/`, keyed by the pins so a re-pin never reuses an
-older tree. Nothing is written into the project.
-
-`PINS` is the only source of versions — a `package.json` in the project is never
-read, exactly as green's inline SHAs and blue's PEP 723 metadata are the only
-source for them. Do not write one, and do not add these dependencies to an
-existing one expecting it to take effect. Repin by re-installing the skill.
-
-`colors.yml` is a YAML map. Provider settings are flat; applications are the only
-nested collection. Quote version-like YAML values such as `3.10`.
+All colors read the same `colors.yml`. Compute providers, their credentials,
+SSH key references and remote compute state come from the pinned
+[colors-compute library](https://github.com/getcolors/colors-compute).
+Package code owns the ONCE application, SMTP, DNS and GitHub stages.
 
 ```yaml
 profile: production
 workdir: .colors
+provider-compute: digitalocean
+provider-backend: r2
+provider-smtp: resend
+provider-dns: cloudflare
+compute-prevent-destroy: true
+compute-ssh-sources: ["203.0.113.0/24"] # replace with the operator's CIDR
+compute-http-sources: ["0.0.0.0/0"]
+digitalocean-region: ams3
+digitalocean-size: s-1vcpu-1gb
+digitalocean-image: ubuntu-24-04-x64
+r2-bucket: example-state
+r2-endpoint: https://ACCOUNT.r2.cloudflarestorage.com
 once:
   applications:
     - host: www.example.com
       image: ghcr.io/example/site:latest
-      github: acme/site
+      github: example/site
       env:
         DATABASE_URL: app-database-url
-provider-compute: digitalocean
-provider-smtp: resend
-provider-dns: cloudflare
-provider-backend: r2
-compute-prevent-destroy: true
 ```
 
-Application `github` is optional, as `owner/repo`. Deploy keys are never
-configured here, and they are per repository rather than per application: every
-repository named gets one keypair, generated fresh on every `create` and never
-stored. The public half is installed on the server behind a ForceCommand naming
-every host that repository serves, so a key leaked from one repository cannot
-redeploy another's application, while two applications sharing a repository —
-one image answering for several hosts — share one key that updates both. The private half is
-published to a GitHub Actions environment named after the profile, alongside
-`SERVER_IP`, `SERVER_USER`, and `SSH_KNOWN_HOSTS` — the server's own host key,
-so a workflow can pin it instead of running `ssh-keyscan` and trusting whatever
-answers on that address every deploy. The previous generation stays authorized
-until the new one is published, so a failed publication heals on the next
-`create`. Requires `COLORS_PAR_GITHUB_TOKEN`, for `delete` too, which withdraws
-what `create` published. Nothing reads those values until a workflow in that
-repository does; [github-deploy.md](github-deploy.md) is the example workflow
-and the contract it consumes.
+Replace example values. Quote version strings. `compute-ssh-sources` admits TCP
+22; `compute-http-sources` admits TCP 80 and 443. The library also resolves the
+selected provider's legacy `*-ssh-sources` and `*-http-sources` keys. An absent
+source list is an error. Only providers supporting the requested firewall and
+network capabilities can run the configuration.
 
-Application `env` maps the container variable name to a flat desired-state key.
-Do not add that key's value to YAML. Supply it as `COLORS_PAR_APP_DATABASE_URL` or
-`COLORS_PAR_APP_DATABASE_URL`.
+The machine name defaults to `profile`; an optional provider-scoped name
+changes the cloud label. SSH aliases and key ownership remain profile-based.
+Leave the provider's public-key reference absent to let the library manage
+`~/.ssh/<profile>`. A present reference selects external ownership. Blank
+references are errors. For external SSH, use an agent or an explicit
+`ssh-private-key-path`. Private key content is never configuration.
 
-Provider choices and required fields match the unified repository manual:
+Compute supports R2 and S3 remote state. S3 needs `s3-bucket` and `s3-region`
+and uses the ambient AWS credential chain. R2 needs `r2-bucket`, `r2-endpoint`,
+`COLORS_PAR_R2_ACCESS_KEY_ID` and `COLORS_PAR_R2_SECRET_ACCESS_KEY`.
+`provider-compute: no-infra` and local compute state are unsupported.
 
-- compute: `azure`, `aws`, `google`, `digitalocean`, `hcloud`, `vultr`, `yandex`, `oci`, `no-infra`
-- SMTP: `resend`, `no-infra`
-- DNS: `cloudflare`, `yandex`, `no-infra`
-- backend: `local`, `s3`, `r2`
+Compute state keys are `<profile>/compute/shared.tfstate` and
+`<profile>/compute/nodes/0.tfstate`. The library coordinates ownership in
+`<profile>/compute/coordination.json`. Existing `<profile>/tofu-compute.tfstate`
+requires a reviewed state migration before create. The library refuses to
+adopt or overwrite it automatically. Back up state and review resource address
+transfers and plans before a live migration. An empty build is not migration
+proof. SMTP and DNS retain `<profile>/<tool>.tfstate`.
 
-For Yandex compute, `yandex-static-ip: true` reserves the public address across
-stop/start. `yandex-allow-stopping-for-update: true` separately permits updates
-that require stopping the instance. Both default to `false`.
-`yandex-image-id` optionally pins the boot image; without it, later family
-releases are ignored so they cannot replace the server unexpectedly. Changing
-the pin plans a replacement.
+Yandex reserves a public address by default. Explicit `yandex-static-ip: false`
+selects a dynamic address; true retains the reservation.
+`yandex-allow-stopping-for-update` separately permits updates needing a stop.
+A named `yandex-image-id` pins the boot image. The library refuses replacement
+plans during ordinary convergence.
 
-Credentials use `COLORS_PAR_*`, the one namespace every colour shares:
-`DO_TOKEN`, `HCLOUD_TOKEN`, `VULTR_API_KEY`, `YANDEX_TOKEN`, `RESEND_API_KEY`,
-`RESEND_PASSWORD`, `NO_INFRA_SMTP_PASSWORD`, `CLOUDFLARE_API_TOKEN`,
-`R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`. OCI uses its configured profile;
-Azure uses the ambient Azure CLI session; Google uses Application Default Credentials; AWS compute and S3 use OpenTofu's ambient AWS chain.
+SMTP is `resend` or `no-infra`. Resend needs `COLORS_PAR_RESEND_API_KEY` and
+`COLORS_PAR_RESEND_PASSWORD`. External SMTP uses `no-infra-smtp-server`,
+`no-infra-smtp-port`, `no-infra-smtp-username` and
+`COLORS_PAR_NO_INFRA_SMTP_PASSWORD`. DNS is `cloudflare`, `yandex` or `no-infra`.
+Cloudflare uses `COLORS_PAR_CLOUDFLARE_API_TOKEN`; Yandex uses its cloud/folder
+settings and `COLORS_PAR_YANDEX_TOKEN`.
 
-The machine SSH key is generated by default: with no machine-key setting in
-desired state, a real `create` generates an ed25519 keypair named after the
-`profile` in the operator's `~/.ssh` and registers the public half with
-the provider; `delete` removes it after a successful destroy. A leftover key —
-on disk or at the provider — outside the deployment's state stops the create
-(SSH Keypair Standard, `workspace/standards/ssh-keypair.md`). Setting the
-provider's machine-key value switches generation off; then SSH uses
-`ssh-agent` as before.
+Applications derive DNS zones and Resend domains from their hostnames. Only
+listed hosts receive A records. Application `env` maps container variable names
+to flat parameter keys, whose values arrive through `COLORS_PAR_*`.
+Never put the values in YAML.
 
-Application hosts derive all DNS zones. Only listed hosts receive A records.
-Every zone receives its own `notifications.<zone>` Resend domain.
+Application `github` is optional `owner/repo`. Each named repository gets one
+fresh deploy key during create, restricted to its listed hosts. ONCE publishes
+the private key and server connection facts to an Actions environment named
+after the profile. It retains one previous authorized generation for recovery
+from a failed publication. These operations need `COLORS_PAR_GITHUB_TOKEN`,
+including delete, which withdraws the credentials. With no repository named,
+no GitHub token is required. See [github-deploy.md](github-deploy.md) for the
+application workflow consuming those values.

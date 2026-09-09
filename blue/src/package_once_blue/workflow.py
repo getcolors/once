@@ -10,7 +10,7 @@ from blue.workflow import advice_add, workflow
 
 from blue.cli import read_pars
 
-from . import github, ssh, tools
+from . import github, ssh, tools, machine
 from .validate import secret_errors, state_errors
 
 
@@ -38,29 +38,18 @@ async def _state_output(opts: dict, tool: str) -> dict | None:
 
 
 async def _adopt_existing_state(opts: dict) -> dict:
-    compute = await _state_output(opts, "tofu-compute")
-    smtp = await _state_output(opts, "tofu-smtp")
-    return {**opts, **(compute or {}), **(smtp or {}), **({"once/compute-params": compute} if compute else {}), **({"once/smtp-params": smtp} if smtp else {})}
+    loaded = await machine.load(opts)
+    if loaded.get('blue/exit'):
+        return loaded
+    smtp = await _state_output(opts, 'tofu-smtp')
+    return {**loaded, **(smtp or {}), **({'once/smtp-params': smtp} if smtp else {})}
 
 
 async def start_step(original: dict, env: dict[str, str] | None = None) -> dict:
     async def after(opts, _env, context):
-        # The machine key's create matrix and provider preflight run before
-        # any template is rendered: an unowned key on disk or at the provider
-        # stops the run while stopping is still free. Delete fills the same
-        # template values (destroy renders before it destroys) but checks
-        # nothing — its cleanup step runs after the compute destroy instead.
-        if context["real"] and context["event"] == "delete":
-            return {**(await _adopt_existing_state(ssh.with_machine_key(opts, True))), "blue/exit": 0}
-        if context["real"] and context["event"] == "create":
-            ensured = await ssh.ensure_key(opts, lambda o: _state_output(o, "tofu-compute"))
-            if (ensured.get("blue/exit") or 0) > 0:
-                return ensured
-            checked = ssh.preflight(ssh.with_machine_key(ensured, True))
-            if (checked.get("blue/exit") or 0) > 0:
-                return checked
-            return await _with_deploy_keys(checked, context["real"])
-        return await _with_deploy_keys(ssh.with_machine_key(opts, context["real"]), context["real"])
+        if context['real'] and context['event'] == 'delete':
+            return await _adopt_existing_state(opts)
+        return await _with_deploy_keys(opts, context['real'])
     return await preflight(
         original, defaults={"compute-prevent-destroy": True}, overlay=read_pars, env=env,
         validators=[
@@ -95,12 +84,12 @@ def wire_fn(step: str, run_opts: dict):
             # The local keypair goes last, strictly after a successful compute
             # destroy: a failed delete leaves the key, which is still the only
             # credential to whatever survived.
-            "once/tofu-compute": (tools.tofu_compute_step, "once/ssh-cleanup"),
+            "once/tofu-compute": (tools.tofu_compute_step,),
             "once/ssh-cleanup": (ssh.cleanup_step,),
         }.get(step)
     return {
-        "once/start": (start_step, "once/tofu-compute", "once/tofu-smtp"),
-        "once/tofu-compute": (tools.tofu_compute_step, "once/tofu-dns"),
+        "once/start": (start_step, "once/tofu-compute"),
+        "once/tofu-compute": (tools.tofu_compute_step, "once/tofu-smtp"),
         "once/tofu-smtp": (tools.tofu_smtp_step, "once/tofu-dns"),
         "once/tofu-dns": (tools.tofu_dns_step, "once/tofu-smtp-post"),
         "once/tofu-smtp-post": (tools.tofu_smtp_post_step, "once/ansible-local", "once/ansible-remote"),
@@ -122,7 +111,7 @@ def backend_advice(tool: str):
 
 def create_workflow():
     result = workflow(start="once/start", wire_fn=wire_fn)
-    for step in tofu_steps:
+    for step in tofu_steps[1:]:
         tool = step.removeprefix("once/")
         result = advice_add(result, step, "before", "once.workflow/backend", backend_advice(tool))
     result = progress.advise(result)

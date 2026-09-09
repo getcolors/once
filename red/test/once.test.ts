@@ -18,7 +18,9 @@ const valid = {
   "provider-compute": "digitalocean",
   "provider-smtp": "resend",
   "provider-dns": "cloudflare",
-  "provider-backend": "local",
+  "provider-backend": "s3",
+    "s3-bucket": "once-tests", "s3-region": "eu-west-1",
+    "compute-ssh-sources": ["0.0.0.0/0"], "compute-http-sources": ["0.0.0.0/0"],
   "compute-prevent-destroy": true,
   "digitalocean-name": "once",
   "digitalocean-region": "ams3",
@@ -95,7 +97,7 @@ test("validation and lifecycle safety", async () => {
 });
 
 test("create/build and delete use inverse graphs", () => {
-  expect(wireFn("once/start", { "red/event": "build" })?.slice(1)).toEqual(["once/tofu-compute", "once/tofu-smtp"]);
+  expect(wireFn("once/start", { "red/event": "build" })?.slice(1)).toEqual(["once/tofu-compute"]);
   // Credentials are withdrawn before anything is destroyed, and publishing
   // follows the configured host rather than the workstation.
   expect(wireFn("once/start", { "red/event": "delete" })?.slice(1)).toEqual(["once/github"]);
@@ -115,7 +117,7 @@ test("a build renders the complete production tree without tools", async () => {
   try {
     const result = await runWorkflow(onceWorkflow, { ...valid, workdir, "red/event": "build" });
     expect(result["red/exit"]).toBe(0);
-    expect(files(join(workdir, "test"))).toHaveLength(21);
+    expect(files(join(workdir, "test"))).toHaveLength(23);
   } finally { rmSync(workdir, { recursive: true, force: true }); }
 });
 

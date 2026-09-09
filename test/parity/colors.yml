@@ -19,7 +19,7 @@ once:
 provider-compute: digitalocean
 provider-smtp: resend
 provider-dns: cloudflare
-provider-backend: local
+provider-backend: s3
 compute-prevent-destroy: true
 azure-subscription-id: 00000000-0000-0000-0000-000000000000
 azure-location: swedencentral
@@ -107,3 +107,6 @@ s3-bucket: once-parity
 s3-region: eu-west-1
 r2-bucket: once-parity
 r2-endpoint: https://example.r2.cloudflarestorage.com
+
+compute-ssh-sources: ["0.0.0.0/0"]
+compute-http-sources: ["0.0.0.0/0"]

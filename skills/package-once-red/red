@@ -15,7 +15,6 @@ import { homedir } from "node:os";
 // break the development symlink at red/red.
 const PINS = {
   "package-once-red": "github:getcolors/once#31d3758769e55a16deafd730208cb8f7b3723cf3",
-  "red": "github:getcolors/red#db9bfe61282e2093f4098bf5a6ee0cd10added6e",
 };
 
 // PINS is the only source of versions, as green's inline SHAs and blue's PEP

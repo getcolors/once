@@ -1,78 +1,50 @@
 ---
 name: package-once-red
-description: Creates and operates production single-server Basecamp ONCE deployments with Red, Bun, OpenTofu, and Ansible. Use for colors.yml setup, safe builds and dry-runs, provisioning, deletion, or status reports.
+description: Create and operate single-server Basecamp ONCE deployments with Red. Use for colors.yml configuration, builds, dry-runs, provisioning, deletion and status reports.
 license: MIT
 ---
 
 # ONCE with Red
 
-Use this skill in the user's current directory. Read
-[references/configuration.md](references/configuration.md) before creating or
-changing desired state and before a real create or delete, and
-[references/github-deploy.md](references/github-deploy.md) before writing or
-changing a GitHub Actions workflow.
+Use the bundled `red` launcher in the deployment directory. It runs with
+Bun and resolves immutable package dependencies. Read
+[configuration.md](references/configuration.md) before changing desired state.
+Read [github-deploy.md](references/github-deploy.md) when adding continuous
+deployment to an application's repository.
 
-## Safety
+The package calls colors-compute for one host. The library owns provider
+selection, credentials, remote state and SSH key lifecycle. Update its dependency
+to obtain provider support; do not add a compute template or provider branch to
+this package. ONCE owns application configuration, SMTP, DNS and GitHub publishing.
 
-- Never request or print a secret, private key, token, password, or application value.
-- Secrets use `COLORS_PAR_*`, the one namespace every colour shares, and never belong in `colors.yml`, generated files, commands, or logs.
-- Read only a user-approved SSH `.pub` file. Never inspect a private key.
-- Do not overwrite `red` or `colors.yml` without explicit approval.
-- Default to `build` and `create --dry-run`. A real create/delete needs explicit confirmation for that operation.
-- Build and dry-run are credential-free; never claim they validate credentials.
-- Delete remains blocked until `COLORS_PAR_COMPUTE_PREVENT_DESTROY=false` or `COLORS_PAR_COMPUTE_PREVENT_DESTROY=false` is present.
-- Never edit `.colors/`; it is generated and is shared safely with the Green and Blue implementations. Never run two implementations concurrently against that state.
+Keep secrets in `COLORS_PAR_*` environment variables. Ask for variable names
+and whether they are set, never their values. Do not read `.envrc.private` or
+private keys. Never read generated `.colors/` as source or edit it. Use one color
+at a time for a deployment.
 
-## Initialize
+For initialization, preserve existing desired state and unrelated files. Copy
+the bundled launcher, make it executable, and create or revise `colors.yml`
+with non-secret settings. Ignore generated output and private environment files.
+Validate with `./red build` and `./red create --dry-run`. These commands
+contact no provider and do not prove credentials or live health.
 
-Gather profile, applications, provider choices, and the selected providers'
-non-secret settings. Deploy keys are not among them: ONCE generates one per
-repository named under `github` on every create and publishes it to a GitHub
-environment named after the profile, so ask only for `COLORS_PAR_GITHUB_TOKEN`.
-Do not gather secret values. When an application names a repository, also ask
-whether the user wants continuous deployment — see below.
+A real create or delete needs user authorization. Existing authorization for
+the task applies; do not ask again. Create validates, converges compute, then
+SMTP, DNS, verification and application configuration. Compute ownership failure
+stops subsequent resource creation. Delete loads recorded compute inventory,
+withdraws published credentials and SSH configuration, removes DNS and SMTP,
+then destroys compute. The library removes its SSH key after successful destroy.
+Keep `compute-prevent-destroy: true` in desired state; an authorized delete can
+use `COLORS_PAR_COMPUTE_PREVENT_DESTROY=false` for that invocation.
 
-After confirmation:
+Existing monolithic compute state requires an explicit reviewed migration. Do
+not run a new create against it to discover what happens. Missing, unreadable or
+inconsistent state is a refusal, not permission to recreate resources. A failed
+operation retains state needed for inspection and retry.
 
-1. Copy this skill's bundled `red` to `./red` and make it executable. Its `PINS` must pin both `package-once-red` and `red` to immutable Git commits; the launcher resolves them itself on first run.
-2. Write `colors.yml` following the reference, with `workdir: .colors`.
-3. Add `.colors/` and any private environment file to `.gitignore` without replacing unrelated entries.
-4. Run `./red build` and `./red create --dry-run`.
-5. Report required variable names only. Do not run a real create automatically.
-
-## Continuous deployment
-
-`create` publishes `SSH_PRIVATE_KEY`, `SERVER_IP`, `SERVER_USER`, and
-`SSH_KNOWN_HOSTS` into an Actions environment named after the profile; nothing
-reads them until a workflow does. So whenever an application names `github`,
-ask whether to also add the workflow that builds the image and pings the server
-on every push to `main`. Do not ask when no application names a repository —
-without it nothing is published.
-
-On yes, adapt [references/github-deploy.md](references/github-deploy.md):
-substitute the profile for `PROFILE` and the application host for the
-environment URL. The workflow belongs in the **application's** repository, often
-not the directory holding `colors.yml`. Compare the `origin` remote to
-`owner/repo`: on a match write `.github/workflows/deploy.yml`, asking before
-overwriting an existing one; otherwise show the YAML and name its path rather
-than writing into the wrong repository. State that the repository needs its own
-`Dockerfile`, that the published image must equal the application's `image`, and
-that the first run works only after a real `create`.
-
-On no, nothing further is needed: `ssh -T deploy@SERVER_IP </dev/null` is the
-whole deploy interface, and `auto_update: true` updates without a ping.
-
-## Operate
-
-```sh
-./red build
-./red create --dry-run
-./red create
-./red describe
-./red delete --dry-run
-./red delete
-```
-
-Use `-f|--file` for another desired-state file. Before a real lifecycle event,
-check required variables by presence only and let the launcher perform final
-validation.
+Use `./red describe` for recorded compute status and application inspection.
+It reads compute through the library and requires a verified address before SSH.
+For an application naming a GitHub repository, establish whether continuous
+deployment is part of the user's request before adding its workflow. Confirm
+the target repository matches `owner/repo`; the deployment repository may be a
+different checkout. Follow the linked reference for the exact published values.

@@ -19,7 +19,7 @@ import type { Opts } from "red/workflow";
 //    generates and resolves the key inside the checkout, so it cannot see a
 //    keypair living in ~/.ssh and would generate a second one beside a live
 //    deployment's state.
-export const contract = 5;
+export const contract = 6;
 
 export function registrableDomain(host: unknown): string | undefined {
   const labels = String(host ?? "").split(".");

@@ -1,5 +1,21 @@
 # Once
 
+## Shared compute lifecycle
+
+The package pins colors-compute for VM providers, remote compute state and SSH
+ownership. One host uses the same operation as a cluster node, with an unnumbered
+cloud name and a profile-based SSH alias. Compute now finishes before SMTP.
+A legacy-state or ownership failure therefore prevents application resource
+creation. Provider support comes from the library dependency.
+
+Compute uses `<profile>/compute/shared.tfstate`, `<profile>/compute/nodes/0.tfstate`
+and `<profile>/compute/coordination.json`. Existing `tofu-compute.tfstate` needs
+an explicit state migration before convergence. R2 and S3 are supported;
+local compute state and `provider-compute: no-infra` are refused. Supply
+`compute-ssh-sources` and `compute-http-sources`, or the selected provider's
+legacy source keys. See the bundled skill's configuration reference for details.
+
+
 A monorepo containing three byte-compatible implementations of the production
 single-server [Basecamp ONCE](https://github.com/basecamp/once) deployment
 workflow:
@@ -33,9 +49,9 @@ The unified user manual is [`index.html`](index.html).
 Create and build:
 
 ```text
-       ┌─ tofu-compute ─┐                             ┌─ ansible-local
-start ─┤                ├─ tofu-dns ─ tofu-smtp-post ─┤
-       └─ tofu-smtp ────┘                             └─ ansible-remote ─ github
+start -> compute -> SMTP -> DNS -> SMTP verification
+                                      |-- local SSH config
+                                      `-- remote application -> GitHub
 ```
 
 Publishing follows the remote stage, not the local one: the credentials
@@ -45,8 +61,8 @@ Delete reverses the graph. It withdraws the published credentials first — a
 withdrawn credential against a live host is a loud, recoverable broken deploy,
 while a live credential against a destroyed host is silent — then removes the
 managed local SSH block before infrastructure. Providers are Azure, AWS, Google Cloud, DigitalOcean,
-Hetzner Cloud, Vultr, Yandex Cloud, OCI, or an existing host; Resend or existing SMTP;
-Cloudflare or unmanaged DNS; and local, S3, or R2 state.
+Hetzner Cloud, Vultr, Yandex Cloud, OCI; Resend or existing SMTP;
+Cloudflare or unmanaged DNS; and S3 or R2 state.
 
 ## Secrets
 

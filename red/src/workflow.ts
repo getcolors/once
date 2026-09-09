@@ -1,3 +1,4 @@
+import * as machine from "./machine.ts";
 import { parName } from "red/cli";
 import * as dryRun from "red/dry-run";
 import * as progress from "red/progress";
@@ -21,13 +22,10 @@ async function stateOutput(opts: Opts, tool: string): Promise<Record<string, unk
 }
 
 async function adoptExistingState(opts: Opts): Promise<Opts> {
-  const [compute, smtp] = await Promise.all([stateOutput(opts, "tofu-compute"), stateOutput(opts, "tofu-smtp")]);
-  return {
-    ...opts,
-    ...(compute ?? {}), ...(smtp ?? {}),
-    ...(compute ? { "once/compute-params": compute } : {}),
-    ...(smtp ? { "once/smtp-params": smtp } : {}),
-  };
+  const loaded = await machine.load(opts);
+  if (loaded['red/exit']) return loaded;
+  const smtp = await stateOutput(opts,'tofu-smtp');
+  return {...loaded,...(smtp??{}),...(smtp?{'once/smtp-params':smtp}:{})};
 }
 
 // Attach the keys ansible-remote installs and the github step publishes.
@@ -61,23 +59,9 @@ export async function startStep(
       (opts, _env, ctx) => ctx.real && ctx.event === "delete" && opts["compute-prevent-destroy"]
         ? [`compute destruction is protected; set ${parName("compute-prevent-destroy")}=false to delete`] : [],
     ],
-    // The machine key's create matrix and provider preflight run before any
-    // template is rendered: an unowned key on disk or at the provider stops
-    // the run while stopping is still free. Delete fills the same template
-    // values (destroy renders before it destroys) but checks nothing — its
-    // cleanup step runs after the compute destroy instead.
     afterValidate: async (opts, _env, ctx) => {
-      if (ctx.real && ctx.event === "delete") {
-        return { ...(await adoptExistingState(ssh.withMachineKey(opts, true))), "red/exit": 0 };
-      }
-      if (ctx.real && ctx.event === "create") {
-        const ensured = await ssh.ensureKey(opts, (o) => stateOutput(o, "tofu-compute"));
-        if ((ensured["red/exit"] ?? 0) > 0) return ensured;
-        const checked = await ssh.preflight(ssh.withMachineKey(ensured, true));
-        if ((checked["red/exit"] ?? 0) > 0) return checked;
-        return withDeployKeys(checked, ctx.real);
-      }
-      return withDeployKeys(ssh.withMachineKey(opts, ctx.real), ctx.real);
+      if (ctx.real && ctx.event === 'delete') return adoptExistingState(opts);
+      return withDeployKeys(opts, ctx.real);
     },
   }, env);
 }
@@ -105,13 +89,13 @@ export function wireFn(step: string, runOpts: Opts) {
       // The local keypair goes last, strictly after a successful compute
       // destroy: a failed delete leaves the key, which is still the only
       // credential to whatever survived.
-      case "once/tofu-compute": return [tools.tofuComputeStep, "once/ssh-cleanup"] as const;
+      case "once/tofu-compute": return [tools.tofuComputeStep] as const;
       case "once/ssh-cleanup": return [ssh.cleanupStep] as const;
     }
   } else {
     switch (step) {
-      case "once/start": return [startStep, "once/tofu-compute", "once/tofu-smtp"] as const;
-      case "once/tofu-compute": return [tools.tofuComputeStep, "once/tofu-dns"] as const;
+      case "once/start": return [startStep, "once/tofu-compute"] as const;
+      case "once/tofu-compute": return [tools.tofuComputeStep, "once/tofu-smtp"] as const;
       case "once/tofu-smtp": return [tools.tofuSmtpStep, "once/tofu-dns"] as const;
       case "once/tofu-dns": return [tools.tofuDnsStep, "once/tofu-smtp-post"] as const;
       case "once/tofu-smtp-post": return [tools.tofuSmtpPostStep, "once/ansible-local", "once/ansible-remote"] as const;
@@ -134,7 +118,7 @@ export function backendAdvice(tool: string) {
 
 function createWorkflow() {
   let result = workflow({ start: "once/start", wireFn });
-  for (const tool of tofuSteps.map((step) => step.slice("once/".length))) {
+  for (const tool of tofuSteps.slice(1).map((step) => step.slice("once/".length))) {
     result = adviceAdd(result, `once/${tool}`, "before", "once.workflow/backend", backendAdvice(tool));
   }
   result = progress.advise(result);

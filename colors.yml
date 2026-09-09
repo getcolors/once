@@ -28,7 +28,6 @@
 profile: once-example
 workdir: .colors
 
-compute-pubkey: REPLACE_ME # required by Yandex Cloud
 
 # Every application gets its own proxied A record; there is no implicit apex
 # or wildcard record. Hosts may span domains. Each distinct domain gets its
@@ -64,6 +63,8 @@ provider-smtp: resend
 provider-dns: cloudflare
 provider-backend: r2
 compute-prevent-destroy: true
+compute-ssh-sources: ["REPLACE_ME"] # operator IPv4 CIDR
+compute-http-sources: ["0.0.0.0/0"]
 
 azure-subscription-id: REPLACE_ME
 azure-location: swedencentral

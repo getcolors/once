@@ -10,6 +10,7 @@ from blue.cli import stage_dir
 from blue.providers import tool_env
 from blue.scaffold import PRESERVE_JINJA_DELIMITERS, content_spec, scaffold
 
+from . import machine
 from .github import public_keys
 from .utils import apps_domains, registrable_domain
 from .validate import providers
@@ -22,7 +23,6 @@ def _template(path: str) -> dict:
     return {"name": path, "content": (_RESOURCE_ROOT / path).read_text()}
 
 
-_COMPUTE = {name: _template(f"tools/tofu/{name}/main.tf") for name in ["azure", "aws", "digitalocean", "google", "hcloud", "vultr", "yandex", "oci", "no-infra"]}
 _SMTP = {name: _template(f"tools/tofu-smtp/{name}/main.tf") for name in ["resend", "no-infra"]}
 _DNS = {name: _template(f"tools/tofu-dns/{name}/main.tf") for name in ["cloudflare", "yandex", "no-infra"]}
 _SMTP_POST = {name: _template(f"tools/tofu-smtp-post/{name}/main.tf") for name in ["resend", "no-infra"]}
@@ -52,27 +52,7 @@ def backend_credential_env(opts: dict) -> dict[str, str] | None:
 
 
 def fallback_compute_params(opts: dict) -> dict:
-    name = str(opts.get("profile") or "once")
-    provider = opts.get("provider-compute")
-    if provider == "azure":
-        return {"ip": "192.168.0.1", "sudoer": "ubuntu", "uid": "1000", "name": name, "user": "ubuntu"}
-    if provider == "aws":
-        return {"ip": "192.168.0.1", "sudoer": "ubuntu", "uid": "1000", "name": name, "user": "ubuntu"}
-    if provider == "oci":
-        return {"ip": "192.168.0.1", "sudoer": "ubuntu", "uid": "1001", "name": name, "user": "ubuntu"}
-    if provider == "yandex":
-        return {"ip": "192.168.0.1", "sudoer": "ubuntu", "uid": "1000", "name": name, "user": "ubuntu"}
-    if provider == "google":
-        return {"ip": "192.168.0.1", "sudoer": "ubuntu", "uid": "1000", "name": name, "user": "ubuntu"}
-    if provider == "no-infra":
-        return {
-            "ip": opts.get("no-infra-compute-ip") or "192.168.0.1",
-            "sudoer": opts.get("no-infra-compute-sudoer") or "root",
-            **({"uid": opts["no-infra-compute-uid"]} if opts.get("no-infra-compute-uid") is not None else {}),
-            "name": name,
-            "user": opts.get("no-infra-compute-user") or "root",
-        }
-    return {"ip": "192.168.0.1", "sudoer": "root", "name": name, "user": "root"}
+    return machine.fallback_params(opts)
 
 
 def fallback_smtp_params(opts: dict) -> dict:
@@ -102,9 +82,7 @@ def _with_zones(opts: dict) -> dict:
 
 
 async def tofu_compute_step(opts: dict) -> dict:
-    provider = str(opts.get("provider-compute") or "hcloud")
-    dir = tool_dir(opts, "tofu-compute")
-    return await _tofu_with_specs(opts, dir, [_spec(_COMPUTE[provider], f"{dir}/main.tf", opts)], fallback_compute_params(opts), "once/compute-params", _credential_env(opts, "provider-compute"))
+    return await machine.step(opts)
 
 
 async def tofu_smtp_step(original: dict) -> dict:
@@ -233,7 +211,7 @@ def inventory(data: dict) -> str:
     user_hosts = {f"{user['name']}@{user['host']}": {"ansible_host": user["host"], "ansible_user": user["name"], "uid": user.get("uid")} for user in users}
     # In keygen mode nothing guarantees an agent holds the machine key, so the
     # inventory names it — a path, never key material.
-    key_file = {"ansible_ssh_private_key_file": data.get("ssh-private-key-path")} if data.get("ssh-keygen") else {}
+    key_file = {"ansible_ssh_private_key_file": data.get("ssh-private-key-path")} if data.get("ssh-private-key-path") else {}
     admin_hosts = {f"root@{host}": {"ansible_host": host, "ansible_user": data.get("sudoer") or "root", **key_file} for host in data.get("hosts", [])}
     return _pretty_json({"all": {"children": {"admin": {"hosts": admin_hosts}, "users": {"hosts": user_hosts}}}})
 
@@ -346,9 +324,7 @@ async def ansible_local_step(opts: dict) -> dict:
         _spec(_template("tools/ansible-local/inventory.ini"), f"{dir}/inventory.ini", data),
         _spec(_template("tools/ansible-local/main.yml"), f"{dir}/main.yml", data),
     ]
-    # identity_block appends IdentityFile lines to the managed ~/.ssh/config
-    # block in keygen mode, so `ssh <profile>` works without an agent. Empty
-    # otherwise — the rendered block stays byte-identical to the pre-standard
-    # one.
-    identity_block = f"\n    IdentityFile {data.get('ssh-private-key-path')}\n    IdentitiesOnly yes" if data.get("ssh-keygen") else ""
-    return await ansible_with_spec(opts, specs, dir=dir, inventory="inventory.ini", playbooks={"create": "main.yml", "delete": "main.yml"}, extra_vars={"host_alias": str(data.get("name") or data.get("profile") or "once"), "ip": data.get("ip"), "user": data.get("user"), "block_state": "absent" if opts.get("blue/event") == "delete" else "present", "identity_block": identity_block})
+    return await ansible_with_spec(opts, specs, dir=dir, inventory="inventory.ini", playbooks={"create": "main.yml", "delete": "main.yml"}, extra_vars={
+        "host_alias": data.get("profile"),
+        "ssh_hosts": [{"name": data.get("profile"), "ip": data.get("ip"), "user": data.get("user"), "identity_file": data.get("ssh-private-key-path")}],
+        "block_state": "absent" if opts.get("blue/event") == "delete" else "present"})

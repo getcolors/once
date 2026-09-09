@@ -1,5 +1,21 @@
 # Once
 
+## Shared compute lifecycle
+
+The package pins colors-compute for VM providers, remote compute state and SSH
+ownership. One host uses the same operation as a cluster node, with an unnumbered
+cloud name and a profile-based SSH alias. Compute now finishes before SMTP.
+A legacy-state or ownership failure therefore prevents application resource
+creation. Provider support comes from the library dependency.
+
+Compute uses `<profile>/compute/shared.tfstate`, `<profile>/compute/nodes/0.tfstate`
+and `<profile>/compute/coordination.json`. Existing `tofu-compute.tfstate` needs
+an explicit state migration before convergence. R2 and S3 are supported;
+local compute state and `provider-compute: no-infra` are refused. Supply
+`compute-ssh-sources` and `compute-http-sources`, or the selected provider's
+legacy source keys. See the bundled skill's configuration reference for details.
+
+
 `once` provisions and operates a single-server [ONCE](https://github.com/basecamp/once)
 installation with OpenTofu and Ansible. It uses the
 [`green`](https://github.com/getcolors/green) DAG workflow engine. This is the
@@ -24,12 +40,12 @@ bootstrap is skipped, so commands run as `bb green <command>`.
 Create and build use this graph:
 
 ```text
-       ┌─ tofu-compute ─┐                             ┌─ ansible-local
-start ─┤                ├─ tofu-dns ─ tofu-smtp-post ─┤
-       └─ tofu-smtp ────┘                             └─ ansible-remote ─ github
+start -> compute -> SMTP -> DNS -> SMTP verification
+                                      |-- local SSH config
+                                      `-- remote application -> GitHub
 ```
 
-Compute and SMTP run concurrently. DNS joins their outputs, SMTP verification
+Compute completes before SMTP. DNS receives both outputs, SMTP verification
 runs after DNS, and the two Ansible stages then run concurrently. Publishing
 follows the remote stage, not the local one: the credentials describe a
 configured host, so a workstation-side failure does not gate them. Build
@@ -91,7 +107,7 @@ once:
     - host: www.example.net
       image: ghcr.io/example/site:latest
       github: acme/site      # same repository as www.example.com: one key, both hosts
-provider-compute: digitalocean  # azure, aws, google, digitalocean, hcloud, vultr, yandex, oci, no-infra
+provider-compute: digitalocean  # azure, aws, google, digitalocean, hcloud, vultr, yandex, oci
 provider-smtp: resend           # resend, no-infra
 provider-dns: cloudflare        # cloudflare, yandex, no-infra
 provider-backend: r2            # r2, s3, local
@@ -170,25 +186,20 @@ real `delete` validates provider credentials and refuses while
 `describe` reads compute and SMTP values from their OpenTofu state before
 probing the remote host. Compute is reported as `running`, `unreachable` (state
 holds an address but SSH failed) or `absent` (the `tofu-compute` stage has no
-outputs, so nothing was created); a `no-infra` host is never `absent`. Anything
+outputs). Anything
 but `running`, and a missing remote `once` command, produces a non-zero exit;
 the remaining live checks are soft failures named in the report.
 
 ## Providers and generated configuration
 
-- Compute templates: Azure, AWS, Google Cloud, DigitalOcean, Hetzner Cloud, Vultr, Yandex Cloud, OCI, and an
-  existing `no-infra` host. Yandex creates its own network and subnet, installs
-  `compute-pubkey` through instance metadata, and authenticates with
-  `COLORS_PAR_YANDEX_TOKEN`. Set `yandex-static-ip: true` to reserve the public
-  address across stop/start; `yandex-allow-stopping-for-update: true` separately
-  permits updates that require stopping the instance. `yandex-image-id`
-  optionally pins the boot image; without it, later family releases are ignored
-  to prevent surprise server replacement.
+- Compute comes from colors-compute. It validates provider settings, supplies
+  OpenTofu plans, guards state ownership and produces recorded node parameters.
+  Public-only singleton requests omit private networking where supported.
 - SMTP templates: Resend or `no-infra` SMTP settings.
 - DNS templates: Cloudflare, Yandex Cloud DNS, or `no-infra`; Yandex creates
   public zones and direct application and Resend records. The generated records
   live in `apps.tf.json` and `smtp.tf.json` at the compute/SMTP join.
-- Backends: local, S3, and Cloudflare R2, emitted as `backend.tf.json` and
+- Backends: S3 and Cloudflare R2, emitted as `backend.tf.json` and
   isolated by profile and tool under the state key `<profile>/<tool>.tfstate`.
 - `ansible-local` runs a playbook that writes the managed `Host <profile>`
   block into `~/.ssh/config`, and removes it again on delete.
