@@ -49,6 +49,10 @@ async def start_step(original: dict, env: dict[str, str] | None = None) -> dict:
     async def after(opts, _env, context):
         if context['real'] and context['event'] == 'delete':
             return await _adopt_existing_state(opts)
+        if context['real'] and context['event'] == 'create' and opts.get('compute-require-existing-state') is True:
+            opts = await machine.load(opts, _env)
+            if opts.get('blue/exit'):
+                return opts
         return await _with_deploy_keys(opts, context['real'])
     return await preflight(
         original, defaults={"compute-prevent-destroy": True}, overlay=read_pars, env=env,
@@ -95,8 +99,7 @@ def wire_fn(step: str, run_opts: dict):
         "once/tofu-smtp-post": (tools.tofu_smtp_post_step, "once/ansible-local"),
         "once/ansible-local": (tools.ansible_local_step, "once/ansible-remote"),
         # Publishing follows the remote stage, not the local one: the credentials
-        # describe a configured host, and a workstation-side failure should not
-        # gate them.
+        # describe a host whose local access and remote configuration succeeded.
         "once/ansible-remote": (tools.ansible_remote_step, "once/github"),
         "once/github": (github.github_step,),
     }.get(step)

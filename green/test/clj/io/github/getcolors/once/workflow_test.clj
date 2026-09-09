@@ -280,3 +280,23 @@
   (doseq [event [:create :build]]
     (is (= [:once/ansible-local] (vec (rest (sut/wire-fn :once/tofu-smtp-post {:green/event event})))))
     (is (= [:once/ansible-remote] (vec (rest (sut/wire-fn :once/ansible-local {:green/event event})))))))
+
+(deftest guarded-start-refuses-before-provider-branches-and-key-generation
+  (doseq [present? [false true]]
+    (let [calls (atom []) env {"COLORS_PAR_DO_TOKEN" "fixture" "COLORS_PAR_NO_INFRA_SMTP_PASSWORD" "pw" "COLORS_PAR_CLOUDFLARE_API_TOKEN" "cf"}]
+      (with-redefs [machine/load-inventory (fn [opts supplied] (is (= env supplied)) (swap! calls conj :read) (assoc opts :green/exit (if present? 0 1)))
+                    io.github.getcolors.once.github/generate-keys (fn [_] (swap! calls conj :keys) [[] nil])]
+        (let [graph (wf/workflow {:start :once/start :wire-fn (fn [step opts]
+                            (let [[_ & next] (sut/wire-fn step opts)]
+                              (into [(if (= step :once/start) #(sut/start-step % env)
+                                       (fn [o] (swap! calls conj step) (assoc o :green/exit 0)))] next)))})
+              result (wf/run graph (assoc valid :green/event :create :compute-require-existing-state true))]
+          (is (= (if present? 0 1) (:green/exit result)))
+          (is (= (if present? [:read :keys] [:read]) (vec (take 2 @calls))))
+          (is (= present? (boolean (some #{:once/tofu-smtp} @calls))))
+          (is (= present? (boolean (some #{:once/tofu-compute} @calls)))))))))
+
+(deftest guarded-offline-planning-does-not-read-state
+  (with-redefs [machine/load-inventory (fn [& _] (throw (AssertionError. "offline state read")))]
+    (doseq [[event dry?] [[:build false] [:create true]]]
+      (is (= 0 (:green/exit (sut/start-step (assoc valid :green/event event :green/dry-run dry? :compute-require-existing-state true) {})))))))

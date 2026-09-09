@@ -1,14 +1,11 @@
 (ns io.github.getcolors.once.workflow
   "The DAG the launcher runs, and the two steps that are not a tool.
 
-  Create and build fork compute and SMTP, join them at DNS, and fork again
-  into the two Ansible stages:
+  Create and build join compute and SMTP at DNS, then run local SSH setup
+  before remote application convergence. A guarded real create verifies
+  recorded compute ownership before either parallel provider branch starts.
+  Delete removes local aliases before destroying compute."
 
-      start ─┬─ tofu-compute ─┐                          ┌─ ansible-local
-             └─ tofu-smtp ────┴─ tofu-dns ─ smtp-post ───┴─ ansible-remote
-
-  Delete runs the same stages in reverse, dropping the managed SSH config
-  before anything is destroyed."
   (:require
    [clojure.java.io :as io]
    [clojure.string :as str]
@@ -91,10 +88,12 @@
           [(str "compute destruction is protected; set "
                 (green-cli/par-name :compute-prevent-destroy) "=false to delete")]))]
      :after-validate
-     (fn [opts _ {:keys [event real?]}]
+     (fn [opts env {:keys [event real?]}]
        (if (and real? (= :delete event))
          (adopt-existing-state opts)
-         (with-deploy-keys opts real?)))}
+         (let [checked (if (and real? (= :create event) (true? (:compute-require-existing-state opts)))
+                         (machine/load-inventory opts env) opts)]
+           (if (wf/failed? checked) checked (with-deploy-keys checked real?)))))}
     env)))
 
 (defn ansible-cleanup-step

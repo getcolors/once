@@ -61,6 +61,10 @@ export async function startStep(
     ],
     afterValidate: async (opts, _env, ctx) => {
       if (ctx.real && ctx.event === 'delete') return adoptExistingState(opts);
+      if (ctx.real && ctx.event === 'create' && opts['compute-require-existing-state'] === true) {
+        opts = await machine.load(opts, _env);
+        if (opts['red/exit']) return opts;
+      }
       return withDeployKeys(opts, ctx.real);
     },
   }, env);
@@ -101,8 +105,7 @@ export function wireFn(step: string, runOpts: Opts) {
       case "once/tofu-smtp-post": return [tools.tofuSmtpPostStep, "once/ansible-local"] as const;
       case "once/ansible-local": return [tools.ansibleLocalStep, "once/ansible-remote"] as const;
       // Publishing follows the remote stage, not the local one: the credentials
-      // describe a configured host, and a workstation-side failure should not
-      // gate them.
+      // describe a host whose local access and remote configuration succeeded.
       case "once/ansible-remote": return [tools.ansibleRemoteStep, "once/github"] as const;
       case "once/github": return [github.githubStep] as const;
     }

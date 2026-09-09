@@ -15,6 +15,14 @@ local compute state and `provider-compute: no-infra` are refused. Supply
 `compute-ssh-sources` and `compute-http-sources`, or the selected provider's
 legacy source keys. See the bundled skill's configuration reference for details.
 
+For existing deployments moving to remote state, set
+`compute-require-existing-state: true`. A real create reads the recorded compute
+inventory in the start step before generating deploy keys or starting the
+parallel compute and SMTP branches. Missing, retired, unreadable, or incompatible
+ownership stops the workflow. The library then checks ownership again under its
+conditional journal lock. Build and dry-run perform neither state read. This
+guard does not transfer compute or application state.
+
 
 A monorepo containing three byte-compatible implementations of the production
 single-server [Basecamp ONCE](https://github.com/basecamp/once) deployment
