@@ -184,4 +184,4 @@ pushed; never invent or hand-edit a nonexistent SHA.
 
 ## Application consumers
 
-Packages that reuse ONCE application stages supply their own colors-compute dependency. The Blue wheel accepts that version through a normal package requirement. Its development source pins the library in `tool.uv.sources`. Red declares the library as a peer dependency. Standalone ONCE launchers pin the library explicitly. This lets an application package upgrade compute support without upgrading ONCE.
+Packages that reuse ONCE application stages supply their own colors-compute dependency. The Blue wheel accepts that version through a normal package requirement. Its development dependency group pins the library. Red declares the library as a peer dependency. Standalone ONCE launchers pin the library explicitly. This lets an application package upgrade compute support without upgrading ONCE.
