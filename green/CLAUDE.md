@@ -124,8 +124,7 @@ Load-bearing rules:
 `workflow/wire-fn` returns `[step-fn & next-steps]` per step and switches on `:green/event`. Create and build:
 
 ```text
-start ─┬─ tofu-compute ─┐                          ┌─ ansible-local
-       └─ tofu-smtp ────┴─ tofu-dns ─ smtp-post ───┴─ ansible-remote ─ github
+start ─ tofu-compute ─ tofu-smtp ─ tofu-dns ─ smtp-post ─ ansible-local ─ ansible-remote ─ github
 ```
 
 Delete:
@@ -135,7 +134,7 @@ start ─ github ─ ansible-cleanup ─ tofu-smtp-post ─ tofu-dns ─┬─ t
                                                               └─ tofu-compute
 ```
 
-Compute and SMTP run concurrently; `tofu-dns` is a join, and the engine hands it the fork-point opts plus `:green/branches` (a vector of branch results) — `tools/joined-params` reads the branch results out of it. The two Ansible stages then run concurrently.
+Compute finishes before SMTP and DNS. After SMTP verification, local SSH configuration finishes before remote application convergence. A local ownership failure blocks the remote stage and GitHub publication.
 
 `workflow` also attaches: backend advice `:before` each Tofu step, `progress/advise` (the `>>> / <<<` lines), and `dry-run/advise` over `side-effecting-steps` (so `--dry-run` skips them).
 

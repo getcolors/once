@@ -98,8 +98,8 @@ export function wireFn(step: string, runOpts: Opts) {
       case "once/tofu-compute": return [tools.tofuComputeStep, "once/tofu-smtp"] as const;
       case "once/tofu-smtp": return [tools.tofuSmtpStep, "once/tofu-dns"] as const;
       case "once/tofu-dns": return [tools.tofuDnsStep, "once/tofu-smtp-post"] as const;
-      case "once/tofu-smtp-post": return [tools.tofuSmtpPostStep, "once/ansible-local", "once/ansible-remote"] as const;
-      case "once/ansible-local": return [tools.ansibleLocalStep] as const;
+      case "once/tofu-smtp-post": return [tools.tofuSmtpPostStep, "once/ansible-local"] as const;
+      case "once/ansible-local": return [tools.ansibleLocalStep, "once/ansible-remote"] as const;
       // Publishing follows the remote stage, not the local one: the credentials
       // describe a configured host, and a workstation-side failure should not
       // gate them.

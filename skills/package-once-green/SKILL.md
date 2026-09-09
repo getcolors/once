@@ -48,3 +48,5 @@ For an application naming a GitHub repository, establish whether continuous
 deployment is part of the user's request before adding its workflow. Confirm
 the target repository matches `owner/repo`; the deployment repository may be a
 different checkout. Follow the linked reference for the exact published values.
+
+Create and build serialize the package-owned SSH alias stage before remote Ansible. A failed local ownership check stops application convergence; GitHub publication remains after remote convergence.

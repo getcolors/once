@@ -135,3 +135,6 @@ values=[json.loads((root/('machine-'+color)).read_text()) for color in ['green',
 assert values[0]==values[1]==values[2], 'recorded compute parameters differ'
 print('green, red, and blue adapt recorded compute inventory alike')
 PYTHON
+
+# Graph ordering is not visible in generated files. Gate each native graph.
+bash "$root/scripts/ssh-order-parity.sh"

@@ -26,7 +26,7 @@
   "devDependencies": {
     "@types/bun": "^1.2.0",
     "typescript": "^7.0.2",
-    "colors-compute-red": "github:getcolors/colors-compute#3451a05e719b0ad6809f3c88b241a8c010b8f58b"
+    "colors-compute-red": "github:getcolors/colors-compute#5040d93672b9f10e7861f527ea552177369c6851"
   },
   "scripts": {
     "test": "cd red && bun test && bun run typecheck",

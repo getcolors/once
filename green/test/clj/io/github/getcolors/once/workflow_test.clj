@@ -121,8 +121,8 @@
     (is (= [:once/tofu-dns] (:once/tofu-smtp g))
         "DNS follows compute and SMTP")
     (is (= [:once/tofu-smtp-post] (:once/tofu-dns g)))
-    (is (= [:once/ansible-local :once/ansible-remote] (:once/tofu-smtp-post g)))
-    (is (= [] (:once/ansible-local g)))
+    (is (= [:once/ansible-local] (:once/tofu-smtp-post g)))
+    (is (= [:once/ansible-remote] (:once/ansible-local g)))
     (is (= [:once/github] (:once/ansible-remote g))
         "publishing follows the configured host, not the workstation")
     (is (= [] (:once/github g)))
@@ -275,3 +275,8 @@
           (is (empty? (filter #(.isFile %) (file-seq (io/file workdir)))))))
       (finally
         (delete-tree! workdir)))))
+
+(deftest ssh-alias-precedes-remote-convergence
+  (doseq [event [:create :build]]
+    (is (= [:once/ansible-local] (vec (rest (sut/wire-fn :once/tofu-smtp-post {:green/event event})))))
+    (is (= [:once/ansible-remote] (vec (rest (sut/wire-fn :once/ansible-local {:green/event event})))))))

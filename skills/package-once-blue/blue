@@ -6,7 +6,7 @@
 # [tool.uv.sources]
 # package-once-blue = { git = "https://github.com/getcolors/once.git", rev = "f6e299dc814c9267ee53112aaa6424d52287a406", subdirectory = "blue" }
 # blue = { git = "https://github.com/getcolors/blue.git", rev = "290f313ead5ca162875c33a049c880da017eae09" }
-# colors-compute-blue = { git = "https://github.com/getcolors/colors-compute.git", rev = "3451a05e719b0ad6809f3c88b241a8c010b8f58b", subdirectory = "blue" }
+# colors-compute-blue = { git = "https://github.com/getcolors/colors-compute.git", rev = "5040d93672b9f10e7861f527ea552177369c6851", subdirectory = "blue" }
 # ///
 """Thin launcher for package-once-blue."""
 from package_once_blue import exec, run

@@ -124,8 +124,7 @@ dependencies cannot select a monorepo subdirectory. Green uses the git
 Create/build:
 
 ```text
-start ─┬─ tofu-compute ─┐                          ┌─ ansible-local
-       └─ tofu-smtp ────┴─ tofu-dns ─ smtp-post ───┴─ ansible-remote ─ github
+start ─ tofu-compute ─ tofu-smtp ─ tofu-dns ─ smtp-post ─ ansible-local ─ ansible-remote ─ github
 ```
 
 Delete withdraws published credentials first, then runs cleanup, SMTP post,
@@ -185,3 +184,5 @@ pushed; never invent or hand-edit a nonexistent SHA.
 ## Application consumers
 
 Packages that reuse ONCE application stages supply their own colors-compute dependency. The Blue wheel accepts that version through a normal package requirement. Its development dependency group pins the library. Red declares the library as a peer dependency. Standalone ONCE launchers pin the library explicitly. This lets an application package upgrade compute support without upgrading ONCE.
+
+Create and build serialize the package-owned SSH alias stage before remote Ansible. A failed local ownership check stops application convergence; GitHub publication remains after remote convergence.

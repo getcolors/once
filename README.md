@@ -155,3 +155,5 @@ checks that the three YAML readers type every scalar in
 ONCE also lends downstream Package Skills two library modules in every colour — `ssh` (the SSH Keypair Standard) and `compute` (the Compute Provider Standard's operations over a package-owned registry) — whose behaviour and messages `parity.sh` diffs across the three through `scripts/ssh-*` and `scripts/compute-*`.
 
 Generated `.colors/` directories are artifacts and must not be edited as source.
+
+Create and build serialize the package-owned SSH alias stage before remote Ansible. A failed local ownership check stops application convergence; GitHub publication remains after remote convergence.

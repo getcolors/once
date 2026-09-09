@@ -702,8 +702,7 @@ Map DATABASE_URL to the key :site-database-url.</code></pre>
 
       <h3>Create and build</h3>
       <pre class="diagram"><code>start + validation → compute → SMTP → DNS → SMTP verification
-                                            ├─ local SSH config
-                                            └─ remote application → GitHub</code></pre>
+    → local SSH config → remote application → GitHub</code></pre>
       <div class="flow-list">
         <div class="flow-item"><b>1 · Compute + SMTP</b><span>Compute finishes before SMTP, so ownership refusals stop application resource creation.</span></div>
         <div class="flow-item"><b>2 · DNS</b><span>Joins the server IP and SMTP records.</span></div>
@@ -712,7 +711,7 @@ Map DATABASE_URL to the key :site-database-url.</code></pre>
         <div class="flow-item"><b>5 · Remote setup</b><span>Installs ONCE and reconciles applications.</span></div>
         <div class="flow-item"><b>6 · Publish</b><span>Publishes the deploy credentials to each repository.</span></div>
       </div>
-      <p>Publishing follows the remote stage rather than the local one: the credentials describe a configured host, so a failure on the workstation side does not gate them.</p>
+      <p>Local SSH configuration must succeed before remote application convergence. GitHub publication follows the remote stage; a local ownership refusal blocks both.</p>
       <p>For <code>build</code>, the same graph renders deterministic configuration with safe placeholder outputs but does not invoke OpenTofu or Ansible.</p>
 
       <h3>Delete</h3>

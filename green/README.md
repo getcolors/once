@@ -41,14 +41,13 @@ Create and build use this graph:
 
 ```text
 start -> compute -> SMTP -> DNS -> SMTP verification
-                                      |-- local SSH config
-                                      `-- remote application -> GitHub
+    -> local SSH config -> remote application -> GitHub
 ```
 
 Compute completes before SMTP. DNS receives both outputs, SMTP verification
-runs after DNS, and the two Ansible stages then run concurrently. Publishing
-follows the remote stage, not the local one: the credentials describe a
-configured host, so a workstation-side failure does not gate them. Build
+runs after DNS, followed by local SSH configuration, remote application
+convergence, and GitHub publication. A local ownership failure stops both
+downstream stages. Build
 renders the same files without invoking OpenTofu or Ansible; the join falls
 back to placeholder outputs so rendering never needs state.
 

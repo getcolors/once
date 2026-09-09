@@ -5,7 +5,7 @@
     "": {
       "name": "package-once-red-dev",
       "dependencies": {
-        "colors-compute-red": "github:getcolors/colors-compute#3451a05e719b0ad6809f3c88b241a8c010b8f58b",
+        "colors-compute-red": "github:getcolors/colors-compute#5040d93672b9f10e7861f527ea552177369c6851",
         "red": "github:getcolors/red#db9bfe61282e2093f4098bf5a6ee0cd10added6e",
       },
       "devDependencies": {
@@ -61,7 +61,7 @@
 
     "bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
 
-    "colors-compute-red": ["colors-compute-red@github:getcolors/colors-compute#3451a05", { "dependencies": { "red": "github:getcolors/red#db9bfe61282e2093f4098bf5a6ee0cd10added6e" } }, "getcolors-colors-compute-3451a05", "sha512-Bdm0WRdv9xQztipIf08YFrYIcnaWCpDsC21bIFM6htAkx6Efbbp+5apWKmFrhSB4nJYufyCaswa+nUhEug0TUA=="],
+    "colors-compute-red": ["colors-compute-red@github:getcolors/colors-compute#5040d93", { "dependencies": { "red": "github:getcolors/red#db9bfe61282e2093f4098bf5a6ee0cd10added6e" } }, "getcolors-colors-compute-5040d93", "sha512-dAyDx6VezP/z/CkiTHB5w+FuxwsqRWPDGVJ+fQ8/rgpzTU3apHuyoUTrb5PT2EktzuoFC0kd8DBSGYj0jhlrLw=="],
 
     "red": ["red@github:getcolors/red#db9bfe6", { "dependencies": { "zod": "^4.0.0" } }, "getcolors-red-db9bfe6", "sha512-3uHKgJeICb/ljQxiTzLTLUdFNfNqvzPGv08X4LRVOU5uk7wmT7wEuVag/xhj87Qn6tvCtAG8uDp8IbIROBGmmg=="],
 

@@ -139,8 +139,8 @@
       :once/tofu-compute    [tools/tofu-compute-step :once/tofu-smtp]
       :once/tofu-smtp       [tools/tofu-smtp-step :once/tofu-dns]
       :once/tofu-dns        [tools/tofu-dns-step :once/tofu-smtp-post]
-      :once/tofu-smtp-post  [tools/tofu-smtp-post-step :once/ansible-local :once/ansible-remote]
-      :once/ansible-local   [tools/ansible-local-step]
+      :once/tofu-smtp-post  [tools/tofu-smtp-post-step :once/ansible-local]
+      :once/ansible-local   [tools/ansible-local-step :once/ansible-remote]
       ;; Publishing follows the remote stage, not the local one: the
       ;; credentials describe a configured host, and a workstation-side failure
       ;; should not gate them.
