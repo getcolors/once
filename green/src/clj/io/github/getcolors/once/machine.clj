@@ -41,7 +41,7 @@
   (let [padding #(apply str (repeat % " "))]
     (cond
       (map? value) (if (empty? value) "{}"
-                      (str "{\n" (str/join ",\n" (for [[key item] (sort-by key value)]
+                      (str "{\n" (str/join ",\n" (for [[key item] (sort-by (comp name key) value)]
                                                        (str (padding (+ indent 2)) (json/generate-string key) ": " (compute-json item (+ indent 2)))))
                            "\n" (padding indent) "}"))
       (sequential? value) (if (empty? value) "[]"
