@@ -181,3 +181,7 @@ Work on the current branch. The nested workflow libraries are separate Git
 repositories. Do not commit or push any repository unless explicitly asked.
 Library and launcher pins can only be finalized after the relevant commits are
 pushed; never invent or hand-edit a nonexistent SHA.
+
+## Application consumers
+
+Packages that reuse ONCE application stages supply their own colors-compute dependency. The Blue wheel accepts that version through a normal package requirement. Its development source pins the library in `tool.uv.sources`. Red declares the library as a peer dependency. Standalone ONCE launchers pin the library explicitly. This lets an application package upgrade compute support without upgrading ONCE.

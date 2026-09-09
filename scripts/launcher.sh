@@ -33,7 +33,7 @@ ok() {
 # The pin the launcher carries, and a real older `once` commit standing in for a
 # project that pins something else. Both must exist on the remote.
 launcher_pin=$(grep -o '"package-once-red": "github:[^"]*"' "$launcher" | grep -o '[0-9a-f]\{40\}')
-project_pin=72e8135f6b3095dc9f0760230140d2629ebfca5b
+project_pin=9a6d591e2d5f41573b7102ce61739b334150e622
 [ -n "$launcher_pin" ] || fail "could not read the launcher's own pin"
 [ "$launcher_pin" != "$project_pin" ] || fail "fixture pin equals the launcher pin; the precedence check would prove nothing"
 
