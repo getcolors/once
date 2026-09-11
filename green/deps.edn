@@ -5,7 +5,7 @@
  :deps    {io.github.getcolors/colors-compute {:git/url "https://github.com/getcolors/colors-compute.git" :git/sha "5040d93672b9f10e7861f527ea552177369c6851" :deps/root "green"}
            org.clojure/clojure          {:mvn/version "1.12.5"}
            io.github.getcolors/green      {:git/url "https://github.com/getcolors/green.git"
-                                         :git/sha "3f33f5d4dcce1f8d97a11b6972e13eb3f0b37654"}}
+                                         :git/sha "a918861cfb4d7958cf37fd0c8d2e19e0da5b6f47"}}
  :aliases {:dev  {:extra-paths ["env/dev/clj" "test/clj" "test/resources"]}
            :test {:extra-paths ["test/clj" "test/resources"]
                   :extra-deps {io.github.cognitect-labs/test-runner {:git/tag "v0.5.1" :git/sha "dfb30dd"}}

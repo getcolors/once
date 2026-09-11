@@ -10,6 +10,7 @@
     (nil? v) "null:"
     (boolean? v) (str "bool:" v)
     (integer? v) (str "int:" v)
+    (and (number? v) (Double/isFinite (double v)) (== v (long v))) (str "int:" (long v))
     (number? v) (str "float:" v)
     (string? v) (str "string:" v)
     :else (str "other:" (pr-str v))))

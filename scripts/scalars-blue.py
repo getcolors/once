@@ -2,6 +2,7 @@
 `key=type:value` line per entry. Green and red print the same shape, so
 parity.sh can diff them directly."""
 
+import math
 import sys
 
 from blue.cli import load_yaml
@@ -15,7 +16,12 @@ def describe(value: object) -> str:
     if isinstance(value, int):
         return f"int:{value}"
     if isinstance(value, float):
-        return f"float:{value}"
+        if math.isnan(value):
+            return "float:NaN"
+        if math.isinf(value):
+            return "float:-Infinity" if value < 0 else "float:Infinity"
+        # JavaScript represents whole-valued floats and integers identically.
+        return f"int:{int(value)}" if value.is_integer() else f"float:{value}"
     if isinstance(value, str):
         return f"string:{value}"
     return f"other:{value}"

@@ -2,6 +2,9 @@ version = 1
 revision = 3
 requires-python = ">=3.11"
 
+[manifest]
+overrides = [{ name = "blue", git = "https://github.com/getcolors/blue.git?rev=ec33f05543dc7f1d380fd61d40af56362960fcb9" }]
+
 [[package]]
 name = "annotated-types"
 version = "0.8.0"
@@ -14,7 +17,7 @@ wheels = [
 [[package]]
 name = "blue"
 version = "0.1.0"
-source = { git = "https://github.com/getcolors/blue.git?rev=290f313ead5ca162875c33a049c880da017eae09#290f313ead5ca162875c33a049c880da017eae09" }
+source = { git = "https://github.com/getcolors/blue.git?rev=ec33f05543dc7f1d380fd61d40af56362960fcb9#ec33f05543dc7f1d380fd61d40af56362960fcb9" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },

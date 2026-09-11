@@ -29,3 +29,7 @@ packages = ["src/package_once_blue"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+# Exercise the repaired SDK across ONCE and colors-compute during development.
+[tool.uv]
+override-dependencies = ["blue @ git+https://github.com/getcolors/blue.git@ec33f05543dc7f1d380fd61d40af56362960fcb9"]
