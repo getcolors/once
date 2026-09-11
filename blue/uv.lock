@@ -2,9 +2,6 @@ version = 1
 revision = 3
 requires-python = ">=3.11"
 
-[manifest]
-overrides = [{ name = "blue", git = "https://github.com/getcolors/blue.git?rev=ec33f05543dc7f1d380fd61d40af56362960fcb9" }]
-
 [[package]]
 name = "annotated-types"
 version = "0.8.0"
@@ -35,7 +32,7 @@ wheels = [
 [[package]]
 name = "colors-compute-blue"
 version = "0.1.0"
-source = { git = "https://github.com/getcolors/colors-compute.git?subdirectory=blue&rev=5040d93672b9f10e7861f527ea552177369c6851#5040d93672b9f10e7861f527ea552177369c6851" }
+source = { git = "https://github.com/getcolors/colors-compute.git?subdirectory=blue&rev=4f36a7f5bddacf9d286bb52c1ec2c87522bcc091#4f36a7f5bddacf9d286bb52c1ec2c87522bcc091" }
 dependencies = [
     { name = "blue" },
 ]
@@ -60,6 +57,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "blue" },
     { name = "colors-compute-blue" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -67,13 +65,14 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "blue", git = "https://github.com/getcolors/blue.git?rev=290f313ead5ca162875c33a049c880da017eae09" },
+    { name = "blue", specifier = ">=0.1.0" },
     { name = "colors-compute-blue", specifier = ">=0.1.0" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "colors-compute-blue", git = "https://github.com/getcolors/colors-compute.git?subdirectory=blue&rev=5040d93672b9f10e7861f527ea552177369c6851" },
+    { name = "blue", git = "https://github.com/getcolors/blue.git?rev=ec33f05543dc7f1d380fd61d40af56362960fcb9" },
+    { name = "colors-compute-blue", git = "https://github.com/getcolors/colors-compute.git?subdirectory=blue&rev=4f36a7f5bddacf9d286bb52c1ec2c87522bcc091" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
 ]

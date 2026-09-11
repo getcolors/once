@@ -4,14 +4,15 @@ version = "0.1.0"
 description = "Blue/Python implementation of the production ONCE package"
 requires-python = ">=3.11"
 dependencies = [
-  "blue @ git+https://github.com/getcolors/blue.git@290f313ead5ca162875c33a049c880da017eae09",
+  "blue>=0.1.0",
   "colors-compute-blue>=0.1.0",
 ]
 
 
 [dependency-groups]
 dev = [
-  "colors-compute-blue @ git+https://github.com/getcolors/colors-compute.git@5040d93672b9f10e7861f527ea552177369c6851#subdirectory=blue",
+  "blue @ git+https://github.com/getcolors/blue.git@ec33f05543dc7f1d380fd61d40af56362960fcb9",
+  "colors-compute-blue @ git+https://github.com/getcolors/colors-compute.git@4f36a7f5bddacf9d286bb52c1ec2c87522bcc091#subdirectory=blue",
   "pytest>=8.0",
   "pytest-asyncio>=0.24",
 ]
@@ -29,7 +30,3 @@ packages = ["src/package_once_blue"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-
-# Exercise the repaired SDK across ONCE and colors-compute during development.
-[tool.uv]
-override-dependencies = ["blue @ git+https://github.com/getcolors/blue.git@ec33f05543dc7f1d380fd61d40af56362960fcb9"]

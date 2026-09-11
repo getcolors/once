@@ -165,9 +165,10 @@ checks that the three YAML readers type every scalar in
 `test/parity/scalars.yml` identically. The corpus covers scientific notation,
 octal and hexadecimal integers, dates, sexagesimal-looking strings and quoted
 values. Whole-valued floats compare as integers because JavaScript uses one
-number type. Development SDK pins run this check against the repaired readers;
-Blue's uv override also selects that SDK for colors-compute. Bundled deployment
-launchers keep their existing pins.
+number type. Development SDK pins run this check against the repaired readers.
+Blue and colors-compute declare ordinary SDK requirements so applications can supply one
+explicit Blue git pin. Their development groups pin the versions used by tests.
+Bundled deployment launchers keep their existing pins.
 
 ONCE also lends downstream Package Skills two library modules in every colour — `ssh` (the SSH Keypair Standard) and `compute` (the Compute Provider Standard's operations over a package-owned registry) — whose behaviour and messages `parity.sh` diffs across the three through `scripts/ssh-*` and `scripts/compute-*`.
 
