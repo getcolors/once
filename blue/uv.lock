@@ -32,7 +32,7 @@ wheels = [
 [[package]]
 name = "colors-compute-blue"
 version = "0.1.0"
-source = { git = "https://github.com/getcolors/colors-compute.git?subdirectory=blue&rev=4f36a7f5bddacf9d286bb52c1ec2c87522bcc091#4f36a7f5bddacf9d286bb52c1ec2c87522bcc091" }
+source = { git = "https://github.com/getcolors/colors-compute.git?subdirectory=blue&rev=ae28ea74962bb1897fa6365c143c1d43ac1fe095#ae28ea74962bb1897fa6365c143c1d43ac1fe095" }
 dependencies = [
     { name = "blue" },
 ]
@@ -72,7 +72,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "blue", git = "https://github.com/getcolors/blue.git?rev=ec33f05543dc7f1d380fd61d40af56362960fcb9" },
-    { name = "colors-compute-blue", git = "https://github.com/getcolors/colors-compute.git?subdirectory=blue&rev=4f36a7f5bddacf9d286bb52c1ec2c87522bcc091" },
+    { name = "colors-compute-blue", git = "https://github.com/getcolors/colors-compute.git?subdirectory=blue&rev=ae28ea74962bb1897fa6365c143c1d43ac1fe095" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
 ]
