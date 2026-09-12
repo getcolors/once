@@ -171,4 +171,40 @@ ok "a re-pin lands in its own cache entry"
   fail "the bootstrapped build rendered no compute stage"
 ok "a bootstrapped launcher renders a full work tree"
 
+# ---------------------------------------------------------------------------
+# 7. The payload pins the Red SDK at the commit red/package.json tests against.
+#
+# colors-compute-red declares the Red SDK as a peer, so a cold launcher cache
+# installs the SDK only because PINS names it. The pin must be the one the
+# suite runs against, or the payload ships an SDK nothing here exercised.
+# ---------------------------------------------------------------------------
+red_sdk_sha=$(grep -oE '"red": "github:getcolors/red#[0-9a-f]{40}"' "$root/red/package.json" | grep -oE '[0-9a-f]{40}')
+[ -n "$red_sdk_sha" ] || fail "red/package.json carries no Red SDK pin"
+grep -q "\"red\": \"github:getcolors/red#$red_sdk_sha\"" "$launcher" ||
+  fail "the payload PINS the Red SDK at a different commit than red/package.json ($red_sdk_sha)"
+ok "the payload PINS the Red SDK at the red/package.json commit"
+
+# ---------------------------------------------------------------------------
+# 8. A cold cache builds with only PINS.
+#
+# The checks above share one XDG cache and Bun's global download cache, so a
+# peer that was never installed can be masked by a tree an earlier run left
+# behind. Empty both caches and build; that is what a first run on a new
+# machine does. One retry: a cold install fetches three GitHub tarballs and a
+# transient fetch failure is not a payload defect. Each attempt starts empty.
+# ---------------------------------------------------------------------------
+mkdir -p "$tmp/red-cold"
+cp "$launcher" "$tmp/red-cold/red"; chmod +x "$tmp/red-cold/red"
+cold_ok=0
+for attempt in 1 2; do
+  rm -rf "$tmp/red-cold/xdg" "$tmp/red-cold/bun" "$tmp/red-cold/out"
+  if (cd "$tmp/red-cold" &&
+    XDG_CACHE_HOME="$tmp/red-cold/xdg" BUN_INSTALL_CACHE_DIR="$tmp/red-cold/bun" COLORS_PAR_WORKDIR="$tmp/red-cold/out" \
+      ./red build -f "$root/test/parity/colors.yml" >"$tmp/red-cold/build.log" 2>&1); then cold_ok=1; break; fi
+done
+[ "$cold_ok" -eq 1 ] || { tail -5 "$tmp/red-cold/build.log" >&2; fail "the payload does not build from a cold cache"; }
+[ -f "$tmp/red-cold/out/parity/tofu-compute/nodes/0/node-none.tf.json" ] ||
+  fail "the cold-cache build rendered no compute stage"
+ok "the payload builds from a cold cache with only its PINS"
+
 echo "launcher: $checks checks passed"
