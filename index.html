@@ -712,6 +712,7 @@ Map DATABASE_URL to the key :site-database-url.</code></pre>
         <div class="flow-item"><b>6 · Publish</b><span>Publishes the deploy credentials to each repository.</span></div>
       </div>
       <p>Local SSH configuration must succeed before remote application convergence. GitHub publication follows the remote stage; a local ownership refusal blocks both.</p>
+      <p>The remote play waits for SSH and explicitly gathers platform facts before validating and installing ONCE.</p>
       <p>For <code>build</code>, the same graph renders deterministic configuration with safe placeholder outputs but does not invoke OpenTofu or Ansible.</p>
 
       <h3>Delete</h3>

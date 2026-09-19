@@ -94,3 +94,8 @@ application workflow consuming those values.
 
 Resend CNAME targets are preserved in Cloudflare DNS records, with DNS-only
 proxy mode and automatic TTL. TXT quoting and MX priorities are retained.
+
+The remote play waits for SSH, then explicitly gathers the platform facts
+needed to validate Linux, CPU architecture, and the service manager before
+installing ONCE. Automatic gathering stays disabled so it cannot precede SSH
+readiness.

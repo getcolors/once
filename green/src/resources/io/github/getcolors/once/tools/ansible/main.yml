@@ -1,10 +1,17 @@
 ---
 - name: Managed Server Configuration
   hosts: all
+  gather_facts: false
   tasks:
     - name: Wait for SSH after compute creation
       ansible.builtin.wait_for_connection:
         timeout: 300
+
+    - name: Gather platform facts after SSH is ready
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - min
 
     - name: Install docker
       ansible.builtin.shell: >-

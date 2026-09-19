@@ -204,3 +204,32 @@ def test_check_mode_plans_fresh_install_without_writes(installer):
     assert not installer.binary.exists()
     assert not installer.override.exists()
     assert installer.calls == []
+
+
+def test_platform_facts_are_gathered_after_ssh_with_explicit_gathering(tmp_path):
+    document = yaml.safe_load(RESOURCE.read_text())
+    tasks = document[0]["tasks"]
+    installer_index = next(i for i, task in enumerate(tasks) if task["name"] == "Manage pinned ONCE")
+    # Exercise the real connection/setup tasks without installing Docker.
+    preparation = [task for task in tasks[:installer_index] if task["name"] != "Install docker"]
+    assert preparation[0]["name"] == "Wait for SSH after compute creation"
+    play = {**document[0], "hosts": "localhost", "connection": "local",
+            "vars": {"ansible_python_interpreter": sys.executable},
+            "tasks": preparation + [{"name": "Check platform facts are available",
+                                      "ansible.builtin.assert": {"that": [
+                                          "ansible_facts.system is defined",
+                                          "ansible_facts.architecture is defined",
+                                          "ansible_facts.service_mgr is defined",
+                                      ]}}]}
+    playbook = tmp_path / "playbook.yml"
+    playbook.write_text(yaml.safe_dump([play]))
+    config = tmp_path / "ansible.cfg"
+    shutil.copyfile(RESOURCE.with_name("ansible.cfg"), config)
+    result = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", str(playbook)],
+        env={**os.environ, "ANSIBLE_CONFIG": str(config), "ANSIBLE_GATHERING": "explicit",
+             "ANSIBLE_NOCOLOR": "1", "ANSIBLE_LOCAL_TEMP": str(tmp_path / "controller"),
+             "ANSIBLE_REMOTE_TEMP": str(tmp_path / "remote")},
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60,
+    )
+    assert result.returncode == 0, result.stdout
