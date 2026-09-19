@@ -138,3 +138,24 @@ PYTHON
 
 # Graph ordering is not visible in generated files. Gate each native graph.
 bash "$root/scripts/ssh-order-parity.sh"
+
+# Resend records arrive only during create, so ordinary builds cannot cover them.
+smtp="$root/test/parity/smtp.json"
+(cd "$root/green" && bb ../scripts/smtp-green.clj "$smtp") >"$tmp/smtp-green"
+(cd "$root/red" && bun ../scripts/smtp-red.ts "$smtp") >"$tmp/smtp-red"
+(cd "$root/blue" && uv run python ../scripts/smtp-blue.py "$smtp") >"$tmp/smtp-blue"
+diff "$tmp/smtp-green" "$tmp/smtp-red"
+diff "$tmp/smtp-green" "$tmp/smtp-blue"
+python3 - "$tmp/smtp-green" <<'PYTHON'
+import json, sys
+records = json.load(open(sys.argv[1]))["resource"]["cloudflare_dns_record"]
+by_type = {r["type"]: r for r in records.values()}
+assert by_type["CNAME"]["content"] == "send.forge.rmta.net"
+assert by_type["CNAME"]["proxied"] is False
+assert by_type["CNAME"]["ttl"] == "1"
+assert "priority" not in by_type["CNAME"]
+assert by_type["MX"]["priority"] == 10
+assert by_type["MX"]["content"] == "feedback-smtp.eu-west-1.amazonses.com"
+assert by_type["TXT"]["content"] == '\"v=spf1 include:amazonses.com ~all\"'
+print("green, red, and blue preserve Resend CNAME targets, MX priorities and TXT quoting")
+PYTHON

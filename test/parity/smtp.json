@@ -1,0 +1,28 @@
+{
+  "domains": [
+    {
+      "zone": "example.com",
+      "records": [
+        {
+          "record": "SPF",
+          "name": "rsend.notifications",
+          "type": "CNAME",
+          "value": "send.forge.rmta.net"
+        },
+        {
+          "record": "SPF",
+          "name": "send.notifications",
+          "type": "MX",
+          "priority": 10,
+          "value": "feedback-smtp.eu-west-1.amazonses.com"
+        },
+        {
+          "record": "SPF",
+          "name": "send.notifications",
+          "type": "TXT",
+          "value": "v=spf1 include:amazonses.com ~all"
+        }
+      ]
+    }
+  ]
+}

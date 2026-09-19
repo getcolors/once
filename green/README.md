@@ -268,3 +268,6 @@ has to be bumped whenever an older launcher could not survive the change.
 Copyright © 2026 Alberto Miorin
 
 Distributed under the MIT License.
+
+Resend CNAME targets are preserved in Cloudflare DNS records, with DNS-only
+proxy mode and automatic TTL. TXT quoting and MX priorities are retained.

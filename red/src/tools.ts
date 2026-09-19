@@ -158,6 +158,7 @@ function smtpRecord(provider: string, zone: string, record: any): Record<string,
     return {
       zone_id: cloudflareZoneId(zone), name: record.name, ttl: "1", type: record.type,
       proxied: false,
+      ...(record.type === "CNAME" ? { content: record.value } : {}),
       ...(record.type === "TXT" ? { content: `\"${record.value}\"` } : {}),
       ...(record.type === "MX" ? { priority: record.priority, content: record.value } : {}),
     };

@@ -174,6 +174,7 @@
                           :ttl "1"
                           :type type
                           :proxied false}
+                   (= type "CNAME") (merge {:content value})
                    (= type "TXT") (merge {:content (format "\"%s\"" value)})
                    (= type "MX") (merge {:priority priority
                                          :content value}))

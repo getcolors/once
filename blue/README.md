@@ -52,3 +52,6 @@ after the profile on every `create` — but nothing reads them until a workflow 
 that repository does.
 [`../skills/package-once-blue/references/github-deploy.md`](../skills/package-once-blue/references/github-deploy.md)
 is that workflow.
+
+Resend CNAME targets are preserved in Cloudflare DNS records, with DNS-only
+proxy mode and automatic TTL. TXT quoting and MX priorities are retained.

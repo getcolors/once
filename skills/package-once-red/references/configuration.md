@@ -91,3 +91,6 @@ from a failed publication. These operations need `COLORS_PAR_GITHUB_TOKEN`,
 including delete, which withdraws the credentials. With no repository named,
 no GitHub token is required. See [github-deploy.md](github-deploy.md) for the
 application workflow consuming those values.
+
+Resend CNAME targets are preserved in Cloudflare DNS records, with DNS-only
+proxy mode and automatic TTL. TXT quoting and MX priorities are retained.

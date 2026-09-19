@@ -1025,7 +1025,7 @@ no-infra-smtp-username: smtp-user</code></pre>
         <article class="card">
           <p class="label">Managed</p>
           <h3><code>cloudflare</code></h3>
-          <p>Finds every zone derived from the application hostnames, creates a proxied A record for each hostname in its zone, and adds each sending domain's unproxied Resend records. Every zone must already exist in the account. Requires <code>COLORS_PAR_CLOUDFLARE_API_TOKEN</code> with zone-read and DNS-edit access to every zone.</p>
+          <p>Finds every zone derived from the application hostnames, creates a proxied A record for each hostname in its zone, and adds each sending domain's unproxied Resend records. CNAME targets are preserved with automatic TTL, alongside TXT values and MX priorities. Every zone must already exist in the account. Requires <code>COLORS_PAR_CLOUDFLARE_API_TOKEN</code> with zone-read and DNS-edit access to every zone.</p>
         </article>
         <article class="card">
           <p class="label">Managed</p>

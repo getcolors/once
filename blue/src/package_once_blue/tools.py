@@ -131,6 +131,8 @@ def _app_record(provider: str, ip: object, host: str) -> dict:
 def _smtp_record(provider: str, zone: str, record: dict) -> dict:
     if provider == "cloudflare":
         block = {"zone_id": _zone_id(zone), "name": record.get("name"), "ttl": "1", "type": record.get("type"), "proxied": False}
+        if record.get("type") == "CNAME":
+            block["content"] = record.get("value")
         if record.get("type") == "TXT":
             block["content"] = f'"{record.get("value")}"'
         if record.get("type") == "MX":
