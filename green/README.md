@@ -35,6 +35,16 @@ Standing alone, the launcher resolves `once` and `green` as pinned git
 dependencies. Inside this repository `bb.edn` supplies local roots and the
 bootstrap is skipped, so commands run as `bb green <command>`.
 
+The package pins Basecamp ONCE to **v0.3.3**. A real `create` installs the
+Linux amd64 or arm64 release binary with its pinned SHA-256 checksum, replacing
+an existing binary when it differs. The managed background service disables
+binary self-updates with `ONCE_NO_SELF_UPDATE=1` and restarts when the binary or
+service configuration changes. Application image `auto_update` and backups
+remain available. Upgrading the binary does not recreate application containers;
+v0.3.3's `BASE_URL` environment variable reaches an existing application only
+when its container is recreated. The ONCE version is fixed by the package,
+not a `colors.yml` setting.
+
 ## Workflow
 
 Create and build use this graph:

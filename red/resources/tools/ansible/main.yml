@@ -18,17 +18,142 @@
       retries: 10
       delay: 10
 
-    - name: Install ONCE
-      ansible.builtin.shell: >-
-        curl -fsSL https://get.once.com -o install-once.sh
-        && ONCE_INTERACTIVE=false sh install-once.sh
-        && rm install-once.sh
-      args:
-        creates: /usr/local/bin/once
-      register: once_install_result
-      until: once_install_result.rc == 0
-      retries: 10
-      delay: 10
+    - name: Manage pinned ONCE
+      become: yes
+      vars:
+        once_version: v0.3.3
+        once_architectures:
+          x86_64:
+            asset: once-linux-amd64
+            checksum: aef855da263721c6c1072ff5ebc4c17a52af8c8e80c46c5a9dd458e7ca3a7f35
+          aarch64:
+            asset: once-linux-arm64
+            checksum: 97e32ba0fdac0ad5e6010851b306e3cb2616285a9eeb2e869ff7e71f4b442bbb
+          arm64:
+            asset: once-linux-arm64
+            checksum: 97e32ba0fdac0ad5e6010851b306e3cb2616285a9eeb2e869ff7e71f4b442bbb
+        once_release: "{{ once_architectures[ansible_facts.architecture] }}"
+      block:
+        - name: Validate ONCE platform
+          ansible.builtin.assert:
+            that:
+              - ansible_facts.system == 'Linux'
+              - ansible_facts.architecture in once_architectures
+              - ansible_facts.service_mgr == 'systemd'
+            fail_msg: ONCE requires Linux amd64 or arm64 with systemd.
+
+        - name: Inspect installed ONCE binary
+          ansible.builtin.stat:
+            path: /usr/local/bin/once
+            checksum_algorithm: sha256
+          register: once_binary
+
+        - name: Inspect ONCE background service
+          ansible.builtin.stat:
+            path: /etc/systemd/system/once-background.service
+          register: once_background_unit
+
+        - name: Report planned ONCE binary replacement
+          ansible.builtin.debug:
+            msg: "Install ONCE {{ once_version }} ({{ once_release.asset }})."
+          changed_when: true
+          when:
+            - ansible_check_mode
+            - once_binary.stat.checksum | default('') != once_release.checksum
+
+        # Skip dependent writes in check mode: their staged files and service
+        # do not exist yet on a fresh server. The checksum check above is safe.
+        - name: Converge pinned ONCE installation
+          when: not ansible_check_mode
+          block:
+            - name: Create ONCE download cache
+              ansible.builtin.file:
+                path: /var/cache/once
+                state: directory
+                owner: root
+                group: root
+                mode: "0755"
+
+            # Verify before stopping the old service or replacing its binary.
+            - name: Download verified ONCE release
+              ansible.builtin.get_url:
+                url: "https://github.com/basecamp/once/releases/download/{{ once_version }}/{{ once_release.asset }}"
+                dest: "/var/cache/once/{{ once_version }}-{{ once_release.asset }}"
+                checksum: "sha256:{{ once_release.checksum }}"
+                owner: root
+                group: root
+                mode: "0755"
+                timeout: 60
+              register: once_download
+              until: once_download is succeeded
+              retries: 3
+              delay: 5
+
+            - name: Create ONCE background override directory
+              ansible.builtin.file:
+                path: /etc/systemd/system/once-background.service.d
+                state: directory
+                owner: root
+                group: root
+                mode: "0755"
+
+            - name: Disable ONCE binary self-updates
+              ansible.builtin.copy:
+                dest: /etc/systemd/system/once-background.service.d/10-colors-version.conf
+                content: |
+                  [Service]
+                  Environment="ONCE_NO_SELF_UPDATE=1"
+                owner: root
+                group: root
+                mode: "0644"
+              register: once_background_override
+
+            - name: Replace ONCE binary and reconcile background service
+              block:
+                # Stop the updater before replacement, including the first
+                # adoption of a binary that already has the pinned checksum.
+                - name: Stop ONCE background service before changes
+                  ansible.builtin.systemd_service:
+                    name: once-background.service
+                    state: stopped
+                  when:
+                    - once_background_unit.stat.exists
+                    - once_binary.stat.checksum | default('') != once_release.checksum or once_background_override.changed
+
+                # copy uses an atomic rename, keeping a working executable in
+                # place if staging fails. Application containers keep running.
+                - name: Install pinned ONCE binary
+                  ansible.builtin.copy:
+                    src: "/var/cache/once/{{ once_version }}-{{ once_release.asset }}"
+                    dest: /usr/local/bin/once
+                    remote_src: true
+                    owner: root
+                    group: root
+                    mode: "0755"
+
+                # Upstream installs and starts the unit. The drop-in must exist
+                # first, so even the initial process cannot update the binary.
+                - name: Install ONCE background service
+                  ansible.builtin.command:
+                    argv:
+                      - /usr/local/bin/once
+                      - background
+                      - install
+                    creates: /etc/systemd/system/once-background.service
+                  environment:
+                    ONCE_NO_SELF_UPDATE: "1"
+                  register: once_background_install
+                  when: not once_background_unit.stat.exists
+              always:
+                # Recover the existing service even if replacement fails, and
+                # load the drop-in before restarting its old or new executable.
+                - name: Ensure ONCE background service is enabled and running
+                  ansible.builtin.systemd_service:
+                    name: once-background.service
+                    daemon_reload: true
+                    enabled: true
+                    state: started
+                  when: once_background_unit.stat.exists or (once_background_install.rc | default(1)) == 0
 
     - name: Install babashka
       ansible.builtin.shell: >-

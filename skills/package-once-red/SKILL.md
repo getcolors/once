@@ -17,6 +17,16 @@ selection, credentials, remote state and SSH key lifecycle. Update its dependenc
 to obtain provider support; do not add a compute template or provider branch to
 this package. ONCE owns application configuration, SMTP, DNS and GitHub publishing.
 
+The package pins Basecamp ONCE to **v0.3.3**. A real `create` installs the
+Linux amd64 or arm64 release binary with its pinned SHA-256 checksum, replacing
+an existing binary when it differs. The managed background service disables
+binary self-updates with `ONCE_NO_SELF_UPDATE=1` and restarts when the binary or
+service configuration changes. Application image `auto_update` and backups
+remain available. Upgrading the binary does not recreate application containers;
+v0.3.3's `BASE_URL` environment variable reaches an existing application only
+when its container is recreated. The ONCE version is fixed by the package,
+not a `colors.yml` setting.
+
 Keep secrets in `COLORS_PAR_*` environment variables. Ask for variable names
 and whether they are set, never their values. Do not read `.envrc.private` or
 private keys. Never read generated `.colors/` as source or edit it. Use one color

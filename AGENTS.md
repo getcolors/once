@@ -170,6 +170,21 @@ either module's behaviour or wording is a contract change for every
 downstream package: land it in all three colours, extend the driver, and prove
 the driver fails before trusting it.
 
+## ONCE binary lifecycle
+
+The package pins Basecamp ONCE to **v0.3.3**. A real `create` installs the
+Linux amd64 or arm64 release binary with its pinned SHA-256 checksum, replacing
+an existing binary when it differs. The managed background service disables
+binary self-updates with `ONCE_NO_SELF_UPDATE=1` and restarts when the binary or
+service configuration changes. Application image `auto_update` and backups
+remain available. Upgrading the binary does not recreate application containers;
+v0.3.3's `BASE_URL` environment variable reaches an existing application only
+when its container is recreated. The ONCE version is fixed by the package,
+not a `colors.yml` setting.
+
+Keep the release URL, checksums, architecture mapping, service environment and
+restart behavior identical in all three packaged Ansible resource trees.
+
 ## Documentation and skills
 
 The skill names are `package-once-green`, `package-once-red`, and
