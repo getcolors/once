@@ -1,0 +1,509 @@
+{
+  "base": {
+    "provider-smtp": "resend",
+    "provider-dns": "cloudflare"
+  },
+  "cases": [
+    {
+      "name": "absent",
+      "opts": {},
+      "errors": []
+    },
+    {
+      "name": "absent-unmanaged",
+      "opts": {
+        "provider-smtp": "no-infra",
+        "provider-dns": "no-infra"
+      },
+      "errors": []
+    },
+    {
+      "name": "cloudflare-none",
+      "opts": {
+        "provider-dns": "cloudflare",
+        "smtp-dmarc-policy": "none"
+      },
+      "errors": []
+    },
+    {
+      "name": "cloudflare-none-reports",
+      "opts": {
+        "provider-dns": "cloudflare",
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": "reports+daily@example.com"
+      },
+      "errors": []
+    },
+    {
+      "name": "cloudflare-quarantine",
+      "opts": {
+        "provider-dns": "cloudflare",
+        "smtp-dmarc-policy": "quarantine"
+      },
+      "errors": []
+    },
+    {
+      "name": "cloudflare-quarantine-reports",
+      "opts": {
+        "provider-dns": "cloudflare",
+        "smtp-dmarc-policy": "quarantine",
+        "smtp-dmarc-rua": "reports+daily@example.com"
+      },
+      "errors": []
+    },
+    {
+      "name": "cloudflare-reject",
+      "opts": {
+        "provider-dns": "cloudflare",
+        "smtp-dmarc-policy": "reject"
+      },
+      "errors": []
+    },
+    {
+      "name": "cloudflare-reject-reports",
+      "opts": {
+        "provider-dns": "cloudflare",
+        "smtp-dmarc-policy": "reject",
+        "smtp-dmarc-rua": "reports+daily@example.com"
+      },
+      "errors": []
+    },
+    {
+      "name": "yandex-none",
+      "opts": {
+        "provider-dns": "yandex",
+        "smtp-dmarc-policy": "none"
+      },
+      "errors": []
+    },
+    {
+      "name": "yandex-none-reports",
+      "opts": {
+        "provider-dns": "yandex",
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": "reports+daily@example.com"
+      },
+      "errors": []
+    },
+    {
+      "name": "yandex-quarantine",
+      "opts": {
+        "provider-dns": "yandex",
+        "smtp-dmarc-policy": "quarantine"
+      },
+      "errors": []
+    },
+    {
+      "name": "yandex-quarantine-reports",
+      "opts": {
+        "provider-dns": "yandex",
+        "smtp-dmarc-policy": "quarantine",
+        "smtp-dmarc-rua": "reports+daily@example.com"
+      },
+      "errors": []
+    },
+    {
+      "name": "yandex-reject",
+      "opts": {
+        "provider-dns": "yandex",
+        "smtp-dmarc-policy": "reject"
+      },
+      "errors": []
+    },
+    {
+      "name": "yandex-reject-reports",
+      "opts": {
+        "provider-dns": "yandex",
+        "smtp-dmarc-policy": "reject",
+        "smtp-dmarc-rua": "reports+daily@example.com"
+      },
+      "errors": []
+    },
+    {
+      "name": "policy-null",
+      "opts": {
+        "smtp-dmarc-policy": null
+      },
+      "errors": [
+        "smtp-dmarc-policy must be none, quarantine, or reject"
+      ]
+    },
+    {
+      "name": "policy-false",
+      "opts": {
+        "smtp-dmarc-policy": false
+      },
+      "errors": [
+        "smtp-dmarc-policy must be none, quarantine, or reject"
+      ]
+    },
+    {
+      "name": "policy-true",
+      "opts": {
+        "smtp-dmarc-policy": true
+      },
+      "errors": [
+        "smtp-dmarc-policy must be none, quarantine, or reject"
+      ]
+    },
+    {
+      "name": "policy-number",
+      "opts": {
+        "smtp-dmarc-policy": 3
+      },
+      "errors": [
+        "smtp-dmarc-policy must be none, quarantine, or reject"
+      ]
+    },
+    {
+      "name": "policy-array",
+      "opts": {
+        "smtp-dmarc-policy": []
+      },
+      "errors": [
+        "smtp-dmarc-policy must be none, quarantine, or reject"
+      ]
+    },
+    {
+      "name": "policy-object",
+      "opts": {
+        "smtp-dmarc-policy": {}
+      },
+      "errors": [
+        "smtp-dmarc-policy must be none, quarantine, or reject"
+      ]
+    },
+    {
+      "name": "policy-empty",
+      "opts": {
+        "smtp-dmarc-policy": ""
+      },
+      "errors": [
+        "smtp-dmarc-policy must be none, quarantine, or reject"
+      ]
+    },
+    {
+      "name": "policy-uppercase",
+      "opts": {
+        "smtp-dmarc-policy": "NONE"
+      },
+      "errors": [
+        "smtp-dmarc-policy must be none, quarantine, or reject"
+      ]
+    },
+    {
+      "name": "policy-whitespace",
+      "opts": {
+        "smtp-dmarc-policy": " none"
+      },
+      "errors": [
+        "smtp-dmarc-policy must be none, quarantine, or reject"
+      ]
+    },
+    {
+      "name": "policy-unknown",
+      "opts": {
+        "smtp-dmarc-policy": "monitor"
+      },
+      "errors": [
+        "smtp-dmarc-policy must be none, quarantine, or reject"
+      ]
+    },
+    {
+      "name": "rua-null",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": null
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-false",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": false
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-number",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": 2
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-array",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": []
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-object",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": {}
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-empty",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": ""
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-mailto",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": "mailto:reports@example.com"
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-list",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": "a@example.com,b@example.com"
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-display-name",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": "Reports <a@example.com>"
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-newline",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": "a@example.com\n"
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-crlf",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": "a@example.com\r\n"
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-spaces",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": " a@example.com"
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-missing-domain",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": "a@"
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-missing-local",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": "@example.com"
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-local-domain",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": "a@localhost"
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-bad-domain",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": "a@-example.com"
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-tag-injection",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": "a@example.com; p=reject"
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-unicode",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": "r\u00e9ports@example.com"
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-too-long",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@example.com"
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-absent-policy",
+      "opts": {
+        "smtp-dmarc-rua": "a@example.com"
+      },
+      "errors": [
+        "smtp-dmarc-rua requires smtp-dmarc-policy"
+      ]
+    },
+    {
+      "name": "rua-null-absent-policy",
+      "opts": {
+        "smtp-dmarc-rua": null
+      },
+      "errors": [
+        "smtp-dmarc-rua requires smtp-dmarc-policy",
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "policy-null-valid-rua",
+      "opts": {
+        "smtp-dmarc-policy": null,
+        "smtp-dmarc-rua": "a@example.com"
+      },
+      "errors": [
+        "smtp-dmarc-policy must be none, quarantine, or reject"
+      ]
+    },
+    {
+      "name": "providers-no-infra-cloudflare",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "provider-smtp": "no-infra",
+        "provider-dns": "cloudflare"
+      },
+      "errors": [
+        "smtp-dmarc-policy requires resend SMTP and managed DNS"
+      ]
+    },
+    {
+      "name": "providers-resend-no-infra",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "provider-smtp": "resend",
+        "provider-dns": "no-infra"
+      },
+      "errors": [
+        "smtp-dmarc-policy requires resend SMTP and managed DNS"
+      ]
+    },
+    {
+      "name": "providers-no-infra-no-infra",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "provider-smtp": "no-infra",
+        "provider-dns": "no-infra"
+      },
+      "errors": [
+        "smtp-dmarc-policy requires resend SMTP and managed DNS"
+      ]
+    },
+    {
+      "name": "providers-resend-unknown",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "provider-smtp": "resend",
+        "provider-dns": "unknown"
+      },
+      "errors": [
+        "smtp-dmarc-policy requires resend SMTP and managed DNS"
+      ]
+    },
+    {
+      "name": "combined-invalid",
+      "opts": {
+        "smtp-dmarc-policy": false,
+        "smtp-dmarc-rua": false,
+        "provider-dns": "no-infra"
+      },
+      "errors": [
+        "smtp-dmarc-policy must be none, quarantine, or reject",
+        "smtp-dmarc-policy requires resend SMTP and managed DNS",
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-interpolation",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": "${report}@example.com"
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    },
+    {
+      "name": "rua-directive",
+      "opts": {
+        "smtp-dmarc-policy": "none",
+        "smtp-dmarc-rua": "%{report}@example.com"
+      },
+      "errors": [
+        "smtp-dmarc-rua must be a single email address"
+      ]
+    }
+  ]
+}

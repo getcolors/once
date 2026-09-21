@@ -424,3 +424,15 @@
 
       (finally
         (delete-tree! workdir)))))
+
+(deftest dmarc-records-are-scoped-to-notification-domains
+  (doseq [provider ["cloudflare" "yandex"]]
+    (let [data {:provider provider :domains [{:zone "example.com" :records []} {:zone "example.net" :records []}]}
+          rendered (json/parse-string (tools/render-fn :smtp (assoc data :smtp-dmarc-policy "none" :smtp-dmarc-rua "reports@example.com")))
+          records (vals (get-in rendered ["resource" (if (= provider "cloudflare") "cloudflare_dns_record" "yandex_dns_recordset")]))]
+      (is (= 2 (count records)))
+      (is (= #{(str "_dmarc.notifications.example.com" (when (= provider "yandex") ".")) (str "_dmarc.notifications.example.net" (when (= provider "yandex") "."))} (set (map #(get % "name") records))))
+      (doseq [record records]
+        (is (= "TXT" (get record "type")))
+        (is (= "\"v=DMARC1; p=none; rua=mailto:reports@example.com\"" (if (= provider "cloudflare") (get record "content") (first (get record "data"))))))
+      (is (not (str/includes? (tools/render-fn :smtp data) "DMARC"))))))

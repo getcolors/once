@@ -60,3 +60,30 @@ The remote play waits for SSH, then explicitly gathers the platform facts
 needed to validate Linux, CPU architecture, and the service manager before
 installing ONCE. Automatic gathering stays disabled so it cannot precede SSH
 readiness.
+
+## Optional DMARC management
+
+With `provider-smtp: resend` and `provider-dns: cloudflare` or `yandex`, set
+`smtp-dmarc-policy` to `none`, `quarantine`, or `reject` to manage a TXT record
+at `_dmarc.notifications.<zone>` for every application zone. The value is
+`v=DMARC1; p=<policy>`. Optional `smtp-dmarc-rua` adds
+`; rua=mailto:<email>` and accepts one bare ASCII reporting email address, only
+when a policy is set. Template delimiters (`$`, `%`, `{`, `}`) are rejected.
+For example:
+
+```yaml
+smtp-dmarc-policy: none
+smtp-dmarc-rua: dmarc@example.com
+```
+
+Omitting both keys leaves DMARC unmanaged. `none` explicitly publishes a policy;
+it does not disable management. Either `no-infra` provider rejects this opt-in.
+An explicit sending-domain policy can override a policy inherited from the
+parent domain, so review the existing policy before opting in.
+
+If a TXT record already exists at that name, import it into this deployment's
+DNS state before the first managed apply; do not create a duplicate DMARC
+record. To stop management while preserving the record, back up state, remove
+its resource address from DNS state with `tofu state rm`, and remove both
+options before the next convergence. Removing the policy alone from a managed
+deployment causes OpenTofu to destroy its record on the next apply.

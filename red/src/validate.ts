@@ -62,6 +62,7 @@ export function placeholder(value: unknown): boolean {
 }
 
 const domainRe = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
+const dmarcEmailRe = /^[A-Za-z0-9.!#&'*+/=?^_`|~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/;
 const envNameRe = /^[A-Z_][A-Z0-9_]*$/;
 
 function applications(opts: Opts): any[] | undefined {
@@ -119,6 +120,17 @@ export function stateErrors(opts: Opts): string[] {
   for (const slot of slots) {
     const provider = String(opts[slot]);
     if (!providers[slot]?.[provider]) errors.push(`unsupported ${slot} ${JSON.stringify(opts[slot])}`);
+  }
+  const hasPolicy = Object.hasOwn(opts, "smtp-dmarc-policy");
+  const policy = opts["smtp-dmarc-policy"];
+  if (hasPolicy) {
+    if (typeof policy !== "string" || !["none", "quarantine", "reject"].includes(policy)) errors.push("smtp-dmarc-policy must be none, quarantine, or reject");
+    if (opts["provider-smtp"] !== "resend" || !["cloudflare", "yandex"].includes(String(opts["provider-dns"]))) errors.push("smtp-dmarc-policy requires resend SMTP and managed DNS");
+  }
+  if (Object.hasOwn(opts, "smtp-dmarc-rua")) {
+    const rua = opts["smtp-dmarc-rua"];
+    if (!hasPolicy) errors.push("smtp-dmarc-rua requires smtp-dmarc-policy");
+    if (typeof rua !== "string" || rua.length > 254 || dmarcEmailRe.exec(rua)?.[0] !== rua) errors.push("smtp-dmarc-rua must be a single email address");
   }
   const apps = applications(opts);
   if (!apps?.length) errors.push("once applications must be a non-empty sequence");

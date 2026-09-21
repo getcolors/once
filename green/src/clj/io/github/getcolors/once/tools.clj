@@ -190,7 +190,7 @@
                        value)]}))
 
 (defn render-fn
-  [src {:keys [provider domains applications ip]}]
+  [src {:keys [provider domains applications ip smtp-dmarc-policy smtp-dmarc-rua]}]
   (let [provider (or provider "cloudflare")
         resource (dns-record-resources provider)]
     (case src
@@ -205,7 +205,13 @@
                                (app-record provider ip host))))
       :smtp (tofu/constructs-json
              (for [{:keys [zone records]} domains
-                   {:keys [record type] :as r} records]
+                   {:keys [record type] :as r}
+                   (cond-> (vec records)
+                     smtp-dmarc-policy
+                     (conj {:record "DMARC" :type "TXT"
+                            :name (str "_dmarc.notifications." zone)
+                            :value (str "v=DMARC1; p=" smtp-dmarc-policy
+                                        (when smtp-dmarc-rua (str "; rua=mailto:" smtp-dmarc-rua)))}))]
                (tofu/construct :resource
                                resource
                                (add-fqn-suffix ::smtp-dns
@@ -241,7 +247,9 @@
                                                   :ip (:ip opts)}))
                       (raw-spec (str dir "/smtp.tf.json")
                                 (render-fn :smtp {:provider provider
-                                                  :domains (:domains opts)}))))]
+                                                  :domains (:domains opts)
+                                                  :smtp-dmarc-policy (:smtp-dmarc-policy opts)
+                                                  :smtp-dmarc-rua (:smtp-dmarc-rua opts)}))))]
     (tofu-with-spec opts dir specs {} nil
                     (credential-env opts :provider-dns))))
 

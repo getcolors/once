@@ -180,3 +180,38 @@ async def test_recorded_inventory_supplies_application_and_ssh_parameters(monkey
     assert result['name'] == 'override'
     assert result['ssh-private-key-path'] == '/tmp/identity'
     assert result['ssh-keygen'] is False
+
+
+def test_dmarc_settings_validate_explicit_policy_managed_providers_and_one_bare_report_address():
+    def errors(extra):
+        return [error for error in state_errors({**valid, **extra}) if error.startswith("smtp-dmarc-")]
+    assert errors({}) == []
+    for policy in ("none", "quarantine", "reject"):
+        assert errors({"smtp-dmarc-policy": policy, "smtp-dmarc-rua": "Reports+DMARC@example.com"}) == []
+    for policy in (None, True, 0, "", "NONE", "reject\n", [], {}):
+        assert errors({"smtp-dmarc-policy": policy}) == ["smtp-dmarc-policy must be none, quarantine, or reject"]
+    for provider in ({"provider-smtp": "no-infra"}, {"provider-dns": "no-infra"}):
+        assert errors({**provider, "smtp-dmarc-policy": "none"}) == ["smtp-dmarc-policy requires resend SMTP and managed DNS"]
+    assert errors({"provider-dns": "yandex", "smtp-dmarc-policy": "none"}) == []
+    assert errors({"smtp-dmarc-rua": "reports@example.com"}) == ["smtp-dmarc-rua requires smtp-dmarc-policy"]
+    for rua in (None, True, [], "", "${report}@example.com", "%{report}@example.com", "mailto:a@example.com", "A <a@example.com>", "a@example.com,b@example.com", "a@example.com; p=none", "a@example.com\n", " a@example.com", "a@-example.com", "a@localhost", "a" * 243 + "@example.com"):
+        assert errors({"smtp-dmarc-policy": "none", "smtp-dmarc-rua": rua}) == ["smtp-dmarc-rua must be a single email address"]
+
+
+def test_dmarc_renders_one_sender_domain_record_per_zone_without_changing_provider_records():
+    domains = [{"zone": zone, "records": [{"record": "SPF", "type": "TXT", "name": f"send.notifications.{zone}", "value": "v=spf1 ~all"}]} for zone in ("example.com", "example.net")]
+    for provider in ("cloudflare", "yandex"):
+        resource = "cloudflare_dns_record" if provider == "cloudflare" else "yandex_dns_recordset"
+        baseline = json.loads(render_fn("smtp", {"provider": provider, "domains": domains}))["resource"][resource]
+        assert len(baseline) == 2
+        for policy in ("none", "quarantine", "reject"):
+            for rua in (None, "reports@example.com"):
+                records = json.loads(render_fn("smtp", {"provider": provider, "domains": domains, "smtp-dmarc-policy": policy, "smtp-dmarc-rua": rua}))["resource"][resource]
+                assert len(records) == 4
+                assert all(records[key] == record for key, record in baseline.items())
+                dmarc = [record for key, record in records.items() if key.endswith("_DMARC_TXT")]
+                assert len(dmarc) == 2
+                for domain, record in zip(domains, dmarc):
+                    assert record["name"] == f"_dmarc.notifications.{domain['zone']}" + ("." if provider == "yandex" else "")
+                    value = f'"v=DMARC1; p={policy}' + (f"; rua=mailto:{rua}" if rua else "") + '"'
+                    assert (record["content"] if provider == "cloudflare" else record["data"][0]) == value

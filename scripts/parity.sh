@@ -45,6 +45,8 @@ build_variant no-infra-smtp COLORS_PAR_PROVIDER_SMTP=no-infra
 build_variant no-infra-dns COLORS_PAR_PROVIDER_DNS=no-infra
 build_variant yandex-dns COLORS_PAR_PROVIDER_DNS=yandex
 build_variant r2 COLORS_PAR_PROVIDER_BACKEND=r2
+build_variant dmarc-cloudflare COLORS_PAR_SMTP_DMARC_POLICY=none
+build_variant dmarc-yandex COLORS_PAR_PROVIDER_DNS=yandex COLORS_PAR_SMTP_DMARC_POLICY=reject COLORS_PAR_SMTP_DMARC_RUA=reports@example.com
 
 diff -qr "$root/green/src/resources/io/github/getcolors/once" "$root/red/resources"
 diff -qr "$root/green/src/resources/io/github/getcolors/once" "$root/blue/src/package_once_blue/resources"
@@ -159,3 +161,41 @@ assert by_type["MX"]["content"] == "feedback-smtp.eu-west-1.amazonses.com"
 assert by_type["TXT"]["content"] == '\"v=spf1 include:amazonses.com ~all\"'
 print("green, red, and blue preserve Resend CNAME targets, MX priorities and TXT quoting")
 PYTHON
+
+# DMARC is additional desired state; existing records retain their addresses.
+for provider in cloudflare yandex; do
+  for policy in none quarantine reject; do
+    python3 - "$smtp" "$tmp/dmarc.json" "$provider" "$policy" <<'PYTHON'
+import json, sys
+fixture = json.load(open(sys.argv[1]))
+fixture.update({"provider": sys.argv[3], "smtp-dmarc-policy": sys.argv[4], "smtp-dmarc-rua": "reports@example.com"})
+fixture["domains"].append({"zone": "example.net", "records": []})
+json.dump(fixture, open(sys.argv[2], "w"))
+PYTHON
+    (cd "$root/green" && bb ../scripts/smtp-green.clj "$tmp/dmarc.json") >"$tmp/dmarc-green"
+    (cd "$root/red" && bun ../scripts/smtp-red.ts "$tmp/dmarc.json") >"$tmp/dmarc-red"
+    (cd "$root/blue" && uv run python ../scripts/smtp-blue.py "$tmp/dmarc.json") >"$tmp/dmarc-blue"
+    diff "$tmp/dmarc-green" "$tmp/dmarc-red"
+    diff "$tmp/dmarc-green" "$tmp/dmarc-blue"
+    python3 - "$tmp/dmarc-green" "$tmp/smtp-green" "$provider" "$policy" <<'PYTHON'
+import json, sys
+provider, policy = sys.argv[3:]
+kind = "cloudflare_dns_record" if provider == "cloudflare" else "yandex_dns_recordset"
+records = json.load(open(sys.argv[1]))["resource"][kind]
+dmarc = {key: value for key, value in records.items() if key.endswith("_DMARC_TXT")}
+assert len(dmarc) == 2
+for zone in ["example.com", "example.net"]:
+    record = next(value for key, value in dmarc.items() if key.endswith("_" + zone.replace(".", "_") + "_DMARC_TXT"))
+    assert record["name"] == "_dmarc.notifications." + zone + ("." if provider == "yandex" else "")
+    assert record["type"] == "TXT"
+    content = record["content"] if provider == "cloudflare" else record["data"][0]
+    assert content == '"v=DMARC1; p=' + policy + '; rua=mailto:reports@example.com"'
+if provider == "cloudflare":
+    before = json.load(open(sys.argv[2]))["resource"][kind]
+    assert {key: value for key, value in records.items() if key not in dmarc} == before
+PYTHON
+  done
+done
+echo "green, red, and blue preserve DMARC policy, reporting address, domain scope, and existing SMTP resources"
+
+"$root/scripts/dmarc-parity.sh"

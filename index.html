@@ -1012,6 +1012,13 @@ oci-ssh-authorized-keys: /home/user/.ssh/once.pub</code></pre>
       <pre><code class="language-yaml">provider-smtp: resend</code></pre>
       <p>Resend needs no further keys: its relay is the same for every account, so <code>smtp.resend.com</code>, port <code>587</code>, and the user <code>resend</code> are hard-coded. The SMTP stage creates <code>notifications.&lt;zone&gt;</code> for every distinct application zone and returns each domain's DNS records; the post stage verifies every sending domain after DNS is configured. Each application sends from <code>info@notifications.&lt;its-zone&gt;</code>. Use <code>COLORS_PAR_RESEND_API_KEY</code> for the Resend API and <code>COLORS_PAR_RESEND_PASSWORD</code> for server-side SMTP authentication.</p>
 
+      <h3>Optional DMARC</h3>
+      <p>With Resend and managed Cloudflare or Yandex DNS, <code>smtp-dmarc-policy</code> accepts <code>none</code>, <code>quarantine</code>, or <code>reject</code>. It creates one TXT record at <code>_dmarc.notifications.&lt;zone&gt;</code> per application zone, containing <code>v=DMARC1; p=&lt;policy&gt;</code>. Optional <code>smtp-dmarc-rua</code> takes one bare ASCII reporting email address without template delimiters (<code>$</code>, <code>%</code>, <code>{</code>, <code>}</code>) and appends <code>; rua=mailto:&lt;email&gt;</code>; it requires a policy.</p>
+      <pre><code class="language-yaml">smtp-dmarc-policy: none
+smtp-dmarc-rua: dmarc@example.com</code></pre>
+      <p>Omit both keys to leave DMARC unmanaged. Policy <code>none</code> still manages an explicit record, which can override an inherited parent-domain policy. The opt-in is rejected with either SMTP or DNS set to <code>no-infra</code>. Import an existing record into DNS state before the first managed apply; never create a duplicate DMARC record.</p>
+      <p>To stop management while preserving the DNS record, back up state, remove its resource address with <code>tofu state rm</code>, and remove both options before converging again. Removing the policy alone causes the next apply to destroy the managed record.</p>
+
       <h3>Existing SMTP</h3>
       <pre><code class="language-yaml">provider-smtp: no-infra
 no-infra-smtp-server: smtp.example.net
@@ -1506,6 +1513,8 @@ r2-endpoint: https://ACCOUNT_ID.r2.cloudflarestorage.com</code></pre>
             <tr><td><code>provider-compute</code></td><td>Yes</td><td><code>azure</code>, <code>aws</code>, <code>google</code>, <code>digitalocean</code>, <code>hcloud</code>, <code>vultr</code>, <code>yandex</code>, <code>oci</code>, or <code>no-infra</code>.</td></tr>
             <tr><td><code>provider-smtp</code></td><td>Yes</td><td><code>resend</code> or <code>no-infra</code>.</td></tr>
             <tr><td><code>provider-dns</code></td><td>Yes</td><td><code>cloudflare</code>, <code>yandex</code>, or <code>no-infra</code>.</td></tr>
+            <tr><td><code>smtp-dmarc-policy</code></td><td>No</td><td><code>none</code>, <code>quarantine</code>, or <code>reject</code>; Resend with managed DNS only. Absent leaves DMARC unmanaged.</td></tr>
+            <tr><td><code>smtp-dmarc-rua</code></td><td>No</td><td>One bare reporting email address; requires <code>smtp-dmarc-policy</code>.</td></tr>
             <tr><td><code>provider-backend</code></td><td>Yes</td><td><code>local</code>, <code>s3</code>, or <code>r2</code>.</td></tr>
             <tr><td><code>compute-prevent-destroy</code></td><td>Yes</td><td>Boolean destruction guard; keep <code>true</code> in committed state.</td></tr>
           </tbody>

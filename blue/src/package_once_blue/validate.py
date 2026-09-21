@@ -35,6 +35,7 @@ providers: dict[str, dict[str, dict[str, Any]]] = {
 
 _slots = ["provider-compute", "provider-smtp", "provider-dns", "provider-backend"]
 _domain_re = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$")
+_dmarc_email_re = re.compile(r"^[A-Za-z0-9.!#&'*+/=?^_`|~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$")
 _env_re = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
 
@@ -98,6 +99,19 @@ def state_errors(opts: dict) -> list[str]:
     for slot in _slots:
         if opts.get(slot) not in providers[slot]:
             errors.append(f"unsupported {slot} {opts.get(slot)!r}")
+    has_policy = "smtp-dmarc-policy" in opts
+    policy = opts.get("smtp-dmarc-policy")
+    if has_policy:
+        if not isinstance(policy, str) or policy not in ("none", "quarantine", "reject"):
+            errors.append("smtp-dmarc-policy must be none, quarantine, or reject")
+        if opts.get("provider-smtp") != "resend" or opts.get("provider-dns") not in ("cloudflare", "yandex"):
+            errors.append("smtp-dmarc-policy requires resend SMTP and managed DNS")
+    if "smtp-dmarc-rua" in opts:
+        rua = opts["smtp-dmarc-rua"]
+        if not has_policy:
+            errors.append("smtp-dmarc-rua requires smtp-dmarc-policy")
+        if not isinstance(rua, str) or len(rua) > 254 or not _dmarc_email_re.fullmatch(rua):
+            errors.append("smtp-dmarc-rua must be a single email address")
     apps = _applications(opts)
     if not apps:
         errors.append("once applications must be a non-empty sequence")

@@ -183,7 +183,10 @@ export function renderFn(source: "apps" | "smtp", data: any): string {
         appRecord(provider, data.ip, app.host))));
   }
   return tofu.constructsJson((data.domains ?? []).flatMap((domain: any) =>
-    (domain.records ?? []).map((record: any) => tofu.construct(
+    [...(domain.records ?? []), ...(data["smtp-dmarc-policy"] ? [{
+      record: "DMARC", type: "TXT", name: `_dmarc.notifications.${domain.zone}`,
+      value: `v=DMARC1; p=${data["smtp-dmarc-policy"]}${data["smtp-dmarc-rua"] ? `; rua=mailto:${data["smtp-dmarc-rua"]}` : ""}`,
+    }] : [])].map((record: any) => tofu.construct(
       "resource", resource,
       addFqnSuffix("io.github.getcolors.once.tools/smtp-dns", `-${domain.zone}-${record.record}-${record.type}`),
       smtpRecord(provider, domain.zone, record),
@@ -207,7 +210,7 @@ export function tofuDnsStep(original: Opts): Promise<Opts> {
     const apps = (opts.once as any)?.applications;
     specs.push(
       rawSpec(`${dir}/apps.tf.json`, renderFn("apps", { provider, applications: apps, ip: opts.ip })),
-      rawSpec(`${dir}/smtp.tf.json`, renderFn("smtp", { provider, domains: opts.domains })),
+      rawSpec(`${dir}/smtp.tf.json`, renderFn("smtp", { provider, domains: opts.domains, "smtp-dmarc-policy": opts["smtp-dmarc-policy"], "smtp-dmarc-rua": opts["smtp-dmarc-rua"] })),
     );
   }
   return tofuWithSpecs(opts, dir, specs, {}, undefined, credentialEnv(opts, "provider-dns"));

@@ -145,3 +145,45 @@ test("container matching prefers the once label host", () => {
   expect(containerForHost(unlabelled, "www.example.com")).toBeDefined();
   expect(containerForHost(unlabelled, "example.com")).toBeUndefined();
 });
+
+test("DMARC settings validate explicit policy, managed providers, and one bare report address", () => {
+  const errors = (extra: Record<string, unknown>) => stateErrors({ ...valid, ...extra }).filter(error => error.startsWith("smtp-dmarc-"));
+  expect(errors({})).toEqual([]);
+  for (const policy of ["none", "quarantine", "reject"]) {
+    expect(errors({ "smtp-dmarc-policy": policy, "smtp-dmarc-rua": "Reports+DMARC@example.com" })).toEqual([]);
+  }
+  for (const policy of [null, true, 0, "", "NONE", "reject\n", [], {}]) {
+    expect(errors({ "smtp-dmarc-policy": policy })).toEqual(["smtp-dmarc-policy must be none, quarantine, or reject"]);
+  }
+  for (const provider of [{ "provider-smtp": "no-infra" }, { "provider-dns": "no-infra" }]) {
+    expect(errors({ ...provider, "smtp-dmarc-policy": "none" })).toEqual(["smtp-dmarc-policy requires resend SMTP and managed DNS"]);
+  }
+  expect(errors({ "provider-dns": "yandex", "smtp-dmarc-policy": "none" })).toEqual([]);
+  expect(errors({ "smtp-dmarc-rua": "reports@example.com" })).toEqual(["smtp-dmarc-rua requires smtp-dmarc-policy"]);
+  for (const rua of [null, true, [], "", "${report}@example.com", "%{report}@example.com", "mailto:a@example.com", "A <a@example.com>", "a@example.com,b@example.com", "a@example.com; p=none", "a@example.com\n", " a@example.com", "a@-example.com", "a@localhost", `${"a".repeat(243)}@example.com`]) {
+    expect(errors({ "smtp-dmarc-policy": "none", "smtp-dmarc-rua": rua })).toEqual(["smtp-dmarc-rua must be a single email address"]);
+  }
+});
+
+test("DMARC renders one sender-domain record per zone without changing provider records", () => {
+  const domains = ["example.com", "example.net"].map(zone => ({ zone, records: [{ record: "SPF", type: "TXT", name: `send.notifications.${zone}`, value: "v=spf1 ~all" }] }));
+  for (const provider of ["cloudflare", "yandex"]) {
+    const resource = provider === "cloudflare" ? "cloudflare_dns_record" : "yandex_dns_recordset";
+    const baseline = JSON.parse(renderFn("smtp", { provider, domains })).resource[resource];
+    expect(Object.keys(baseline)).toHaveLength(2);
+    for (const policy of ["none", "quarantine", "reject"]) {
+      for (const rua of [undefined, "reports@example.com"]) {
+        const records = JSON.parse(renderFn("smtp", { provider, domains, "smtp-dmarc-policy": policy, "smtp-dmarc-rua": rua })).resource[resource];
+        expect(Object.keys(records)).toHaveLength(4);
+        for (const [key, record] of Object.entries(baseline)) expect(records[key]).toEqual(record);
+        const dmarc = Object.entries(records).filter(([key]) => key.endsWith("_DMARC_TXT")) as [string, any][];
+        expect(dmarc).toHaveLength(2);
+        for (const [index, [, record]] of dmarc.entries()) {
+          expect(record.name).toBe(`_dmarc.notifications.${domains[index]!.zone}${provider === "yandex" ? "." : ""}`);
+          const value = `"v=DMARC1; p=${policy}${rua ? `; rua=mailto:${rua}` : ""}"`;
+          expect(provider === "cloudflare" ? record.content : record.data[0]).toBe(value);
+        }
+      }
+    }
+  }
+});

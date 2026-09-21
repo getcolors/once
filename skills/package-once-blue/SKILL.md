@@ -12,6 +12,11 @@ uv and resolves immutable package dependencies. Read
 Read [github-deploy.md](references/github-deploy.md) when adding continuous
 deployment to an application's repository.
 
+DMARC management is opt-in through `smtp-dmarc-policy`; see the configuration
+reference for provider restrictions, reporting addresses, existing-record import,
+and preserving a DNS record when removing management. Review any inherited
+policy before setting an explicit sending-domain policy.
+
 The package calls colors-compute for one host. The library owns provider
 selection, credentials, remote state and SSH key lifecycle. Update its dependency
 to obtain provider support; do not add a compute template or provider branch to

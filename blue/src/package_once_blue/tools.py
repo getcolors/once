@@ -163,7 +163,13 @@ def render_fn(source: str, data: dict) -> str:
         ])
     constructs = []
     for domain in data.get("domains", []):
-        for record in domain.get("records", []):
+        records = list(domain.get("records", []))
+        if data.get("smtp-dmarc-policy"):
+            value = f"v=DMARC1; p={data['smtp-dmarc-policy']}"
+            if data.get("smtp-dmarc-rua"):
+                value += f"; rua=mailto:{data['smtp-dmarc-rua']}"
+            records.append({"record": "DMARC", "type": "TXT", "name": f"_dmarc.notifications.{domain['zone']}", "value": value})
+        for record in records:
             constructs.append(tofu.construct("resource", resource, _add_suffix("io.github.getcolors.once.tools/smtp-dns", f"-{domain['zone']}-{record.get('record')}-{record.get('type')}"), _smtp_record(provider, domain["zone"], record)))
     return tofu.constructs_json(constructs)
 
@@ -181,7 +187,7 @@ async def tofu_dns_step(original: dict) -> dict:
     dir = tool_dir(opts, "tofu-dns")
     specs = [_spec(_DNS[provider], f"{dir}/main.tf", opts)]
     if provider in _DNS_RECORD_RESOURCES:
-        specs += [_raw_spec(f"{dir}/apps.tf.json", render_fn("apps", {"provider": provider, "applications": (opts.get("once") or {}).get("applications", []), "ip": opts.get("ip")})), _raw_spec(f"{dir}/smtp.tf.json", render_fn("smtp", {"provider": provider, "domains": opts.get("domains", [])}))]
+        specs += [_raw_spec(f"{dir}/apps.tf.json", render_fn("apps", {"provider": provider, "applications": (opts.get("once") or {}).get("applications", []), "ip": opts.get("ip")})), _raw_spec(f"{dir}/smtp.tf.json", render_fn("smtp", {"provider": provider, "domains": opts.get("domains", []), "smtp-dmarc-policy": opts.get("smtp-dmarc-policy"), "smtp-dmarc-rua": opts.get("smtp-dmarc-rua")}))]
     return await _tofu_with_specs(opts, dir, specs, {}, None, _credential_env(opts, "provider-dns"))
 
 

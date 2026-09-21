@@ -132,6 +132,22 @@
        (remove placeholder?)
        (map keyword)))
 
+(defn- dmarc-errors [opts]
+  (let [policy? (contains? opts :smtp-dmarc-policy)
+        rua? (contains? opts :smtp-dmarc-rua)
+        rua (:smtp-dmarc-rua opts)]
+    (concat
+     (when (and policy? (not (contains? #{"none" "quarantine" "reject"} (:smtp-dmarc-policy opts))))
+       ["smtp-dmarc-policy must be none, quarantine, or reject"])
+     (when (and policy? (not (and (= "resend" (:provider-smtp opts))
+                                 (contains? #{"cloudflare" "yandex"} (:provider-dns opts)))))
+       ["smtp-dmarc-policy requires resend SMTP and managed DNS"])
+     (when (and rua? (not policy?))
+       ["smtp-dmarc-rua requires smtp-dmarc-policy"])
+     (when (and rua? (not (and (string? rua) (<= (count rua) 254)
+                              (re-matches #"[A-Za-z0-9.!#&'*+/=?^_`|~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+" rua))))
+       ["smtp-dmarc-rua must be a single email address"]))))
+
 (defn state-errors
   "Everything wrong with `opts` that does not depend on credentials, as a
   vector of messages. Empty means the desired state is renderable."
@@ -140,6 +156,7 @@
     (vec
      (concat
       (machine/errors opts)
+      (dmarc-errors opts)
       (map #(str % " is required")
            (missing-keys opts (concat [:profile :workdir]
                                       (slot-keys opts :required))))

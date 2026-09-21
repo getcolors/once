@@ -192,3 +192,16 @@
     (let [{:keys [secrets tofu-env]} (get-in sut/providers [:provider-smtp "resend"])]
       (is (contains? (set secrets) :resend-password))
       (is (not (contains? tofu-env :resend-password))))))
+
+(deftest dmarc-is-opt-in
+  (let [opts (assoc valid :provider-smtp "resend" :provider-dns "cloudflare")]
+    (is (empty? (sut/state-errors opts)))
+    (doseq [policy ["none" "quarantine" "reject"]]
+      (is (empty? (sut/state-errors (assoc opts :smtp-dmarc-policy policy :smtp-dmarc-rua "reports@example.com")))))
+    (doseq [policy [nil false "" "invalid"]]
+      (is (some #{"smtp-dmarc-policy must be none, quarantine, or reject"} (sut/state-errors (assoc opts :smtp-dmarc-policy policy)))))
+    (doseq [slot [:provider-smtp :provider-dns]]
+      (is (some #{"smtp-dmarc-policy requires resend SMTP and managed DNS"} (sut/state-errors (assoc opts slot "no-infra" :smtp-dmarc-policy "none")))))
+    (is (some #{"smtp-dmarc-rua requires smtp-dmarc-policy"} (sut/state-errors (assoc opts :smtp-dmarc-rua "reports@example.com"))))
+    (doseq [rua [nil false "" "a@b.com\n" "a@b.com; p=reject" "mailto:a@b.com" "a@b.com,c@d.com" "${report}@example.com" "%{report}@example.com"]]
+      (is (some #{"smtp-dmarc-rua must be a single email address"} (sut/state-errors (assoc opts :smtp-dmarc-policy "none" :smtp-dmarc-rua rua)))))))
