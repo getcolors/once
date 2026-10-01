@@ -137,22 +137,26 @@ ok "resolution leaves the project directory untouched"
 # ---------------------------------------------------------------------------
 # 5. The cache is keyed by PINS, so a re-pin cannot reuse the old tree.
 #
+# Use this published checkout HEAD as a second v2-compatible package commit.
+# The deliberately old manifest pin above cannot run against v2 dependencies.
 # Stand in for `bb pin` by rewriting one pin in a copy of the launcher. Sharing
 # a cache entry across pins is the failure that would leave a re-pinned launcher
 # silently running the commit before it.
 # ---------------------------------------------------------------------------
+repin_target=$(git -C "$root" rev-parse HEAD)
+[ "$repin_target" != "$launcher_pin" ] || fail "commit the launcher stamp before testing re-pin cache separation"
 before=$(find "$cache/package-once-red" -mindepth 1 -maxdepth 1 -type d | wc -l)
 mkdir -p "$tmp/repinned"
-sed "s/$launcher_pin/$project_pin/" "$launcher" > "$tmp/repinned/red"
+sed "s/$launcher_pin/$repin_target/" "$launcher" > "$tmp/repinned/red"
 chmod +x "$tmp/repinned/red"
-grep -q "$project_pin" "$tmp/repinned/red" || fail "fixture: the re-pin rewrite did not apply"
+grep -q "$repin_target" "$tmp/repinned/red" || fail "fixture: the re-pin rewrite did not apply"
 
 (cd "$tmp/repinned" && XDG_CACHE_HOME="$cache" ./red --help >/dev/null) ||
   fail "a re-pinned launcher could not resolve"
 after=$(find "$cache/package-once-red" -mindepth 1 -maxdepth 1 -type d | wc -l)
 [ "$after" -eq $((before + 1)) ] ||
   fail "re-pinning did not create a new cache entry ($before -> $after)"
-grep -rqs "$project_pin" "$cache"/package-once-red/*/package.json ||
+grep -rqs "$repin_target" "$cache"/package-once-red/*/package.json ||
   fail "the re-pinned commit was never fetched"
 ok "a re-pin lands in its own cache entry"
 
