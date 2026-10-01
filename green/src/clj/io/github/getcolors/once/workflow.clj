@@ -17,6 +17,7 @@
    [green.tofu :as tofu]
    [green.workflow :as wf]
    [io.github.getcolors.once.machine :as machine]
+   [io.github.getcolors.once.access :as access]
    [io.github.getcolors.once.github :as github]
    [io.github.getcolors.once.ssh :as ssh]
    [io.github.getcolors.once.tools :as tools]
@@ -35,15 +36,6 @@
                           (tools/backend-credential-env opts))
             :params walk/keywordize-keys)
     (catch Exception _ nil)))
-
-(defn- adopt-existing-state
-  "Delete renders the same templates as create, so a destroy needs the params
-  earlier stages produced (compute ip, smtp domain id and records)."
-  [opts]
-  (let [loaded (machine/load-inventory opts)]
-    (if (or (wf/failed? loaded) (:colors-compute/already-destroyed loaded)) loaded
-        (let [smtp (state-output opts "tofu-smtp")]
-          (cond-> loaded smtp (-> (merge smtp) (assoc :once/smtp-params smtp)))))))
 
 (defn- with-deploy-keys
   "Attach the keys `ansible-remote` installs and the `github` step publishes.
@@ -89,11 +81,26 @@
                 (green-cli/par-name :compute-prevent-destroy) "=false to delete")]))]
      :after-validate
      (fn [opts env {:keys [event real?]}]
-       (if (and real? (= :delete event))
-         (adopt-existing-state opts)
-         (let [checked (if (and real? (= :create event) (true? (:compute-require-existing-state opts)))
-                         (machine/load-inventory opts env) opts)]
-           (if (wf/failed? checked) checked (with-deploy-keys checked real?)))))}
+       (let [real? (and real? (not= :build event))
+             opts (cond-> opts (= :build event) (update :workdir #(str % "/build")))
+             _ (when-not (:green/dry-run opts) (access/lock! opts))
+             prepared (if (:green/dry-run opts) (assoc opts :once/ssh-resource machine/placeholder-resource) (access/resource-step opts))
+             prepared (if (or (:green/dry-run opts) (wf/failed? prepared)) prepared (access/registration-step prepared))
+             loaded (if (and real? (not (wf/failed? prepared))
+                             (or (#{:delete :ssh} event) (:compute-require-existing-state opts)))
+                      (machine/load-inventory prepared env) prepared)]
+         (cond
+           (wf/failed? loaded) loaded
+           (:colors-compute/already-destroyed loaded) loaded
+           (:once/registration-destroyed loaded)
+           (assoc loaded :green/exit 1 :green/err "SSH registration is destroyed while compute is still present")
+           :else
+           (let [ready (if (or (= :create event) (= :build event) (= :ssh event))
+                         (access/agent-step loaded) loaded)
+                 ready (if (and real? (= :delete event))
+                         (let [smtp (state-output ready "tofu-smtp")]
+                           (cond-> ready smtp (-> (merge smtp) (assoc :once/smtp-params smtp)))) ready)]
+             (with-deploy-keys ready real?)))))}
     env)))
 
 (defn ansible-cleanup-step
@@ -113,10 +120,12 @@
 
 (def side-effecting-steps
   (into tofu-steps [:once/ansible-local :once/ansible-remote
-                    :once/ansible-cleanup :once/github :once/ssh-cleanup]))
+                    :once/ansible-cleanup :once/github :once/ssh-cleanup :once/registration-delete :once/ssh]))
 
 (defn wire-fn
   [step run-opts]
+  (if (= :ssh (:green/event run-opts))
+    (case step :once/start [start-step :once/ssh] :once/ssh [access/ssh-step])
   (if (= :delete (:green/event run-opts))
     (case step
       ;; Revoking runs before anything is destroyed: a withdrawn credential
@@ -129,10 +138,9 @@
       :once/tofu-smtp-post  [tools/tofu-smtp-post-step :once/tofu-dns]
       :once/tofu-dns        [tools/tofu-dns-step :once/tofu-smtp]
       :once/tofu-smtp       [tools/tofu-smtp-step :once/tofu-compute]
-      ;; The local keypair goes last, strictly after a successful compute
-      ;; destroy: a failed delete leaves the key, which is still the only
-      ;; credential to whatever survived.
-      :once/tofu-compute    [tools/tofu-compute-step]
+      ;; Registration follows compute. Encrypted SSH authority is retained.
+      :once/tofu-compute    [tools/tofu-compute-step :once/registration-delete]
+      :once/registration-delete [access/registration-delete-step]
       :once/ssh-cleanup     [ssh/cleanup-step])
     (case step
       :once/start           [start-step :once/tofu-compute]
@@ -144,7 +152,7 @@
       ;; Publishing follows the remote stage, not the local one: the
       ;; credentials describe a host whose local access and remote configuration succeeded.
       :once/ansible-remote  [tools/ansible-remote-step :once/github]
-      :once/github          [github/github-step])))
+      :once/github          [github/github-step]))))
 
 ;; ---------------------------------------------------------------------------
 ;; backends
@@ -158,9 +166,12 @@
     :key-fn #(str (or (:profile %) "default") "/" tool ".tfstate")}))
 
 (defn next-steps [step successors opts]
-  (if (or (wf/failed? opts)
-          (and (= step :once/start) (= :delete (:green/event opts)) (true? (:colors-compute/already-destroyed opts))))
-    [] (mapv #(vector % opts) successors)))
+  (cond
+    (wf/failed? opts) []
+    (and (= step :once/start) (= :delete (:green/event opts)) (:colors-compute/already-destroyed opts))
+    (if (and (machine/registration? opts) (not (:once/registration-destroyed opts)))
+      [[:once/registration-delete opts]] [])
+    :else (mapv #(vector % opts) successors)))
 
 (def workflow
   (-> (wf/workflow {:start :once/start :wire-fn wire-fn :next-fn next-steps})

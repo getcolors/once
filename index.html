@@ -718,7 +718,7 @@ Map DATABASE_URL to the key :site-database-url.</code></pre>
       <h3>Delete</h3>
       <pre class="diagram"><code>start + validation ─ github ─ ansible-cleanup ─ tofu-smtp-post ─ tofu-dns ─┬─ tofu-smtp
                                                                            └─ tofu-compute</code></pre>
-      <p>A real delete first withdraws the published credentials, then replays the local Ansible play to drop the managed <code>~/.ssh/config</code> block and removes the generated Ansible files, then destroys SMTP verification and DNS, and finally destroys SMTP and compute concurrently. Existing OpenTofu outputs are loaded before teardown so the destroy renders with the values create produced.</p>
+      <p>A real delete first withdraws the published credentials, then replays the local Ansible play to drop the managed <code>~/.ssh/config</code> block and removes the generated Ansible files, then destroys SMTP verification and DNS, and finally destroys SMTP, compute and provider registration sequentially, retaining encrypted SSH authority. Existing OpenTofu outputs are loaded before teardown so the destroy renders with the values create produced.</p>
       <p>Revoking runs before anything is destroyed because the two failure modes are not symmetric: a withdrawn credential against a live host is a loud, recoverable broken deploy, while a live credential against a destroyed host is silent. The step needs no key material, so it also works when the box is already gone.</p>
     </section>
 
@@ -728,6 +728,7 @@ Map DATABASE_URL to the key :site-database-url.</code></pre>
       <div class="callout info"><span class="callout-title">Interchangeable state</span>Use the same <code>profile</code>, <code>workdir: .colors</code>, providers, and settings when switching colors. Generated paths, resource addresses, and bytes are identical.</div>
 
       <pre><code class="language-yaml">profile: production
+compute-api-version: 2
 workdir: .colors
 
 once:
@@ -750,7 +751,7 @@ digitalocean-name: once
 digitalocean-region: ams3
 digitalocean-size: s-1vcpu-1gb-35gb-intel
 digitalocean-image: ubuntu-24-04-x64
-digitalocean-ssh-keys: fingerprint-or-id-already-in-the-account
+
 
 r2-bucket: once-tfstate
 r2-endpoint: https://ACCOUNT_ID.r2.cloudflarestorage.com</code></pre>
@@ -793,9 +794,9 @@ COLORS_PAR_DIGITALOCEAN_SIZE=s-2vcpu-2gb ./green create --dry-run</code></pre>
         ├── files/deploy
         └── library/once</code></pre>
       <ul>
-        <li>The work directory is generated output and should be ignored by Git.</li>
-        <li>Compute uses remote shared and per-node state under <code>&lt;profile&gt;/compute/</code>. SMTP and DNS retain <code>&lt;profile&gt;/&lt;tool&gt;.tfstate</code>. Existing monolithic compute state needs an explicit migration.</li>
-        <li>Generated Ansible files contain environment lookups, not application or SMTP secret values — provided each application's <code>env</code> uses the map form, which is the one that defers to a <code>COLORS_PAR_*</code> lookup.</li>
+        <li>The work directory is private and should be ignored by Git. Builds render under <code>.colors/build/&lt;profile&gt;/</code>, separate from persistent runtime roots. Do not delete live working directories to bypass ownership checks.</li>
+        <li>New deployments require <code>compute-api-version: 2</code>. Compute uses <code>&lt;profile&gt;/once-node-0.tfstate</code>; provider registrations use <code>&lt;profile&gt;/once-ssh-registration.tfstate</code>. SMTP and DNS retain <code>&lt;profile&gt;/&lt;tool&gt;.tfstate</code>. Existing deployments retain their pinned launchers; v2 supplies no migration, adoption or compatibility layer.</li>
+        <li>Generated Ansible files contain environment lookups, not application or SMTP secret values — provided each application's <code>env</code> uses the map form, which defers to an <code>ONCE_PAR_*</code> lookup. ONCE forwards only the selected <code>COLORS_PAR_*</code> application and SMTP values into those runtime bindings.</li>
         <li><code>apps.tf.json</code> and <code>smtp.tf.json</code> are generated for the Cloudflare and Yandex DNS providers; <code>no-infra</code> renders <code>main.tf</code> alone.</li>
         <li>The <code>ansible-local</code> play writes a managed <code>Host &lt;profile&gt;</code> block into <code>~/.ssh/config</code>, delimited by its own markers. Delete removes that block and leaves the rest of the file untouched.</li>
       </ul>
@@ -899,7 +900,7 @@ azure-image-version: 24.04.202608020
 azure-vnet-cidr: 10.10.0.0/16
 azure-subnet-cidr: 10.10.1.0/24
 azure-boot-disk-size-gb: 30
-azure-ssh-authorized-keys: ~/.ssh/id_ed25519.pub</code></pre>
+</code></pre>
       <p>Creates a dedicated resource group, VNet, subnet, public IP, network security group, NIC, and VM. Authentication uses the native Azure CLI session.</p>
 
       <h3>AWS</h3>
@@ -912,7 +913,7 @@ aws-image-id: ami-...
 aws-vpc-cidr: 10.0.0.0/16
 aws-subnet-cidr: 10.0.1.0/24
 aws-root-volume-size-gb: 30
-aws-ssh-authorized-keys: ~/.ssh/id_ed25519.pub</code></pre>
+</code></pre>
       <p>Creates an isolated VPC, public subnet, internet gateway, security group, key pair, and EC2 instance. Authentication uses the native AWS credential chain.</p>
 
       <h3>Google Cloud</h3>
@@ -921,13 +922,15 @@ google-project: example-project
 google-region: europe-west4
 google-zone: europe-west4-b
 google-name: once
-google-machine-type: t2a-standard-1
+google-machine-type: n4a-highmem-1
+google-boot-disk-type: hyperdisk-balanced
+google-nic-type: GVNIC
 google-image-project: ubuntu-os-cloud
 google-image-family: ubuntu-2404-lts-arm64
-google-image-id: projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20260723
+google-image-id: projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20260918
 google-subnet-cidr: 10.20.1.0/24
-google-boot-disk-size-gb: 30
-google-ssh-authorized-keys: ~/.ssh/id_ed25519.pub</code></pre>
+google-boot-disk-size-gb: 100
+</code></pre>
       <p>Creates a custom VPC, subnet, firewall rule, static address, and Compute Engine instance. Authentication uses Application Default Credentials.</p>
 
       <h3>DigitalOcean</h3>
@@ -936,10 +939,10 @@ digitalocean-name: once
 digitalocean-region: ams3
 digitalocean-size: s-1vcpu-1gb-35gb-intel
 digitalocean-image: ubuntu-24-04-x64
-digitalocean-ssh-keys: fingerprint-or-id-already-in-the-account
+
 # Optional:
 digitalocean-vpc-uuid: non-secret-vpc-uuid</code></pre>
-      <p>The droplet attaches the key named by <code>digitalocean-ssh-keys</code>, which must already exist in the account — give it a fingerprint or key id. Credential: <code>COLORS_PAR_DO_TOKEN</code>.</p>
+      <p>The droplet consumes a separately owned public-key registration derived from the encrypted SSH resource. Credential: <code>COLORS_PAR_DO_TOKEN</code>.</p>
 
       <h3>Hetzner Cloud</h3>
       <pre><code class="language-yaml">provider-compute: hcloud
@@ -947,7 +950,7 @@ hcloud-name: once
 hcloud-image: ubuntu-24.04
 hcloud-server-type: cx23
 hcloud-location: hel1
-hcloud-ssh-keys: key-name-or-id-already-in-the-project</code></pre>
+</code></pre>
       <p>Creates an IPv4 server attached to the key named by <code>hcloud-ssh-keys</code>, which must already exist in the project. Credential: <code>COLORS_PAR_HCLOUD_TOKEN</code>.</p>
 
       <h3>Vultr</h3>
@@ -956,12 +959,12 @@ vultr-name: once
 vultr-region: ams
 vultr-plan: vc2-1c-1gb
 vultr-os-id: 2284
-vultr-ssh-keys: key-id-already-in-the-account</code></pre>
+</code></pre>
       <p>Creates an instance attached to the SSH key id named by <code>vultr-ssh-keys</code>, which must already exist in the account. <code>vultr-os-id</code> is Vultr's numeric operating-system id — <code>2284</code> is Ubuntu 24.04 LTS x64. Credential: <code>COLORS_PAR_VULTR_API_KEY</code>.</p>
 
       <h3>Yandex Cloud</h3>
       <pre><code class="language-yaml">provider-compute: yandex
-compute-pubkey: ssh-ed25519 AAAA... operator
+
 yandex-cloud-id: b1g...
 yandex-folder-id: b1g...
 yandex-zone: kz1-a
@@ -976,7 +979,7 @@ yandex-disk-size-gb: 20
 yandex-static-ip: false
 yandex-allow-stopping-for-update: false
 yandex-image-id: fd8...   # optional; pins the boot image</code></pre>
-      <p>Creates a network, subnet, NAT-enabled Ubuntu instance, and boot disk. <code>compute-pubkey</code> is installed for the <code>ubuntu</code> user; keep the private half in <code>ssh-agent</code>. Credential: <code>COLORS_PAR_YANDEX_TOKEN</code>, passed to OpenTofu as <code>YC_TOKEN</code>.</p>
+      <p>Creates a network, subnet, NAT-enabled Ubuntu instance, and boot disk. The encrypted resource’s public identity is installed for the <code>ubuntu</code> user. Credential: <code>COLORS_PAR_YANDEX_TOKEN</code>, passed to OpenTofu as <code>YC_TOKEN</code>.</p>
       <p><code>yandex-static-ip</code> reserves a <code>yandex_vpc_address</code> and pins the instance's NAT to it. Yandex releases an ephemeral NAT address whenever an instance stops, so without a reserved address a restarted instance comes back on a different IP and anything bound to the old one — a DNS record, a certificate, an <code>~/.ssh/config</code> entry — silently breaks.</p>
       <p><code>yandex-allow-stopping-for-update</code> lets OpenTofu stop the instance to apply a change Yandex cannot make in place, such as <code>yandex-cores</code>, <code>yandex-memory-gb</code>, or <code>yandex-platform-id</code>. Leave it off for a server carrying traffic — the apply then fails naming the flag rather than taking the instance down mid-deploy — and enable it for the one deploy that resizes the instance (<code>COLORS_PAR_YANDEX_ALLOW_STOPPING_FOR_UPDATE=true</code>). Attaching a reserved address does not need it. Both keys default to <code>false</code>, which renders exactly as before.</p>
       <p><code>yandex-image-id</code> optionally pins the boot image. Unset, the family is resolved for the first create and later image ids are ignored so upstream releases cannot unexpectedly replace the server. Changing the pin deliberately plans a replacement, guarded by <code>compute-prevent-destroy</code>.</p>
@@ -994,8 +997,8 @@ oci-ocpus: 1
 oci-memory-in-gbs: 4
 oci-boot-volume-size-in-gbs: 50
 oci-boot-volume-vpus-per-gb: 30
-oci-ssh-authorized-keys: /home/user/.ssh/once.pub</code></pre>
-      <p>The current default shape is ARM-based. <code>oci-ssh-authorized-keys</code> is a path to a public-key file on the machine running the launcher; its contents are written into instance metadata at plan time. OCI authenticates through the named profile in <code>~/.oci/config</code>, so no credential variable is required.</p>
+</code></pre>
+      <p>The current default shape is ARM-based. The encrypted resource’s public identity is written into instance metadata. OCI authenticates through the named profile in <code>~/.oci/config</code>, so no credential variable is required.</p>
       <p><code>oci-image-id</code> is optional and pins the boot image. Left unset, ONCE looks up the newest Canonical Ubuntu 24.04 image compatible with <code>oci-shape</code> — the right behaviour for a first <code>create</code>, and a moving target afterwards. The image id forces replacement on the instance, so once Canonical publishes a newer one, a routine apply proposes destroying the server. Pin it once the stack is real; <code>tofu state show oci_core_instance.ampere_vm</code> reports the running image as <code>source_id</code>. With it set, no image lookup happens at all.</p>
       <div class="callout warning">
         <span class="callout-title">Changing <code>oci-image-id</code> replaces the server</span>
@@ -1055,7 +1058,7 @@ no-infra-smtp-username: smtp-user</code></pre>
 
       <h3>Local</h3>
       <pre><code class="language-yaml">provider-backend: local</code></pre>
-      <p>Best for experiments. Protect and back up the work directory; losing local state makes safe lifecycle management difficult.</p>
+      <p>Local compute state is not supported by ONCE v2. Select R2 or S3 for the deployment.</p>
 
       <h3>Amazon S3</h3>
       <pre><code class="language-yaml">provider-backend: s3
@@ -1076,12 +1079,12 @@ r2-endpoint: https://ACCOUNT_ID.r2.cloudflarestorage.com</code></pre>
         <article class="card">
           <p class="label">Operations</p>
           <h3>Machine keypair</h3>
-          <p><strong>By default ONCE generates and owns the machine key.</strong> When desired state carries no machine-key setting, the first real <code>create</code> generates an ed25519 keypair named after the <code>profile</code> in the operator's <code>~/.ssh</code>, registers the public half with the provider (as a key resource named after the profile where the provider has one), and <code>delete</code> removes it after a successful destroy. An existing <code>~/.ssh/&lt;profile&gt;</code> without deployment state, or a provider key named after the profile outside the deployment's state, stops the create instead of being overwritten or adopted — see the SSH Keypair Standard (<code>workspace/standards/ssh-keypair.md</code>).</p>
+          <p>ONCE v2 creates the encrypted SSH resource <code>machine-access</code> in the selected R2 or S3 backend at <code>&lt;profile&gt;/ssh/machine-access/resource.json</code>. Supply and securely back up <code>COLORS_PAR_ONCE_SSH_PASSPHRASE</code>. The passphrase must remain stable; changing its value does not rotate encryption. Compute consumes only the public identity. Delete destroys the machine and any provider registration, while retaining encrypted SSH authority.</p>
         </article>
         <article class="card">
           <p class="label">Operations</p>
-          <h3>Bring your own key</h3>
-          <p>Setting the provider's machine-key value switches generation off and behaves exactly as before: <code>compute-pubkey</code> installs a public key through Yandex instance metadata, <code>digitalocean-ssh-keys</code>, <code>hcloud-ssh-keys</code>, and <code>vultr-ssh-keys</code> reference keys already registered with the provider, and <code>oci-ssh-authorized-keys</code> (with the aws/azure/google equivalents) is a local public-key file. In that mode the matching private half should be loaded into <code>ssh-agent</code> before create so Ansible can reach the new server.</p>
+          <h3>Scoped SSH access</h3>
+          <p>Use <code>./COLOR ssh</code> for operator access. A temporary scoped agent unlocks the encrypted identity; Ansible and describe use the same mechanism. The identity file is a public cache, and decrypted private keys are never persisted. Ambient agents, forwarding and connection multiplexing are disabled. External machine-key references are not accepted by the greenfield v2 implementation.</p>
         </article>
         <article class="card">
           <p class="label">Deployment</p>
@@ -1096,7 +1099,7 @@ ssh -T deploy@203.0.113.10 &lt; /dev/null</code></pre>
 
     <section id="commands">
       <h2 class="anchor-heading"><a href="#commands" aria-label="Link to Command overview">#</a>Command overview</h2>
-      <pre><code class="language-text">Usage: ./&lt;color&gt; &lt;build|create|delete|describe&gt; [-f|--file &lt;color-state&gt;] [--dry-run]
+      <pre><code class="language-text">Usage: ./&lt;color&gt; &lt;build|create|delete|describe|ssh&gt; [-f|--file &lt;color-state&gt;] [--dry-run]
 Colors: green / red / blue</code></pre>
       <div class="table-wrap">
         <table>
@@ -1146,7 +1149,7 @@ Colors: green / red / blue</code></pre>
           </tbody>
         </table>
       </div>
-      <p>Under <code>no-infra</code> the host is yours rather than OpenTofu's, so it is never reported as <code>absent</code>; without a configured address it reports <code>unreachable (no host configured)</code>.</p>
+      <p>Describe resolves the live address from owned provider resources and refuses missing or replaced machines. It never falls back to an unverified stored address.</p>
       <p>Describe exits non-zero unless compute is <code>running</code>, and also when the remote <code>once</code> command is missing. Every other live check is a soft failure named in the report.</p>
       <p>For a remote backend, make sure its credentials are present so OpenTofu outputs can be read. The compute private key must be available to SSH.</p>
     </section>
@@ -1460,13 +1463,14 @@ jobs:
       <p>Once creates the public zone, but serving traffic requires delegation: set the domain's NS records at its registrar to <code>ns1.yandexcloud.net</code> and <code>ns2.yandexcloud.net</code>, then allow propagation. Resend verification also waits on this delegation.</p>
 
       <h3>An existing server fails during create</h3>
-      <p>Verify direct SSH access with <code>no-infra-compute-user</code>, passwordless privilege escalation for <code>no-infra-compute-sudoer</code>, a supported Linux host, and outbound network access for installers.</p>
+      <p>ONCE v2 requires a managed compute node and fresh encrypted SSH authority. Existing-server compute is unsupported.</p>
     </section>
 
     <section id="complete-example">
       <h2 class="anchor-heading"><a href="#complete-example" aria-label="Link to Complete example">#</a>Complete desired-state example</h2>
       <p>Green syntax is shown; Red and Blue use the same keys in YAML. This contains only public or non-secret configuration. Replace illustrative identifiers and provide credentials exclusively through environment variables.</p>
       <pre><code class="language-yaml">profile: production
+compute-api-version: 2
 workdir: .colors
 
 once:
@@ -1492,7 +1496,7 @@ digitalocean-name: once-production
 digitalocean-region: ams3
 digitalocean-size: s-1vcpu-1gb-35gb-intel
 digitalocean-image: ubuntu-24-04-x64
-digitalocean-ssh-keys: fingerprint-or-id-already-in-the-account
+
 
 r2-bucket: once-production-tfstate
 r2-endpoint: https://ACCOUNT_ID.r2.cloudflarestorage.com</code></pre>
@@ -1508,9 +1512,8 @@ r2-endpoint: https://ACCOUNT_ID.r2.cloudflarestorage.com</code></pre>
           <tbody>
             <tr><td><code>profile</code></td><td>Yes</td><td>Names generated output, remote state keys, the compute resource, and the SSH host alias.</td></tr>
             <tr><td><code>workdir</code></td><td>Yes</td><td>Shared generated root directory; recommended value is <code>.colors</code>.</td></tr>
-            <tr><td><code>compute-pubkey</code></td><td>Yandex only</td><td>Administrative SSH public key installed for Yandex's <code>ubuntu</code> user.</td></tr>
             <tr><td><code>once</code></td><td>Yes</td><td>Map containing a non-empty <code>applications</code> vector. Each application takes <code>host</code>, <code>image</code>, an optional <code>github</code> repository, and an optional <code>env</code> map.</td></tr>
-            <tr><td><code>provider-compute</code></td><td>Yes</td><td><code>azure</code>, <code>aws</code>, <code>google</code>, <code>digitalocean</code>, <code>hcloud</code>, <code>vultr</code>, <code>yandex</code>, <code>oci</code>, or <code>no-infra</code>.</td></tr>
+            <tr><td><code>provider-compute</code></td><td>Yes</td><td><code>azure</code>, <code>aws</code>, <code>google</code>, <code>digitalocean</code>, <code>hcloud</code>, <code>vultr</code>, <code>yandex</code>, <code>oci</code>.</td></tr>
             <tr><td><code>provider-smtp</code></td><td>Yes</td><td><code>resend</code> or <code>no-infra</code>.</td></tr>
             <tr><td><code>provider-dns</code></td><td>Yes</td><td><code>cloudflare</code>, <code>yandex</code>, or <code>no-infra</code>.</td></tr>
             <tr><td><code>smtp-dmarc-policy</code></td><td>No</td><td><code>none</code>, <code>quarantine</code>, or <code>reject</code>; Resend with managed DNS only. Absent leaves DMARC unmanaged.</td></tr>
@@ -1526,15 +1529,14 @@ r2-endpoint: https://ACCOUNT_ID.r2.cloudflarestorage.com</code></pre>
         <table>
           <thead><tr><th>Provider</th><th>Keys</th></tr></thead>
           <tbody>
-            <tr><td>Azure</td><td><code>azure-subscription-id</code>, <code>azure-location</code>, <code>azure-resource-group</code>, <code>azure-name</code>, <code>azure-vm-size</code>, <code>azure-image-publisher</code>, <code>azure-image-offer</code>, <code>azure-image-sku</code>, <code>azure-image-version</code>, <code>azure-vnet-cidr</code>, <code>azure-subnet-cidr</code>, <code>azure-boot-disk-size-gb</code>, <code>azure-ssh-authorized-keys</code></td></tr>
-            <tr><td>AWS</td><td><code>aws-region</code>, <code>aws-availability-zone</code>, <code>aws-name</code>, <code>aws-instance-type</code>, <code>aws-image-id</code>, <code>aws-vpc-cidr</code>, <code>aws-subnet-cidr</code>, <code>aws-root-volume-size-gb</code>, <code>aws-ssh-authorized-keys</code></td></tr>
-            <tr><td>Google</td><td><code>google-project</code>, <code>google-region</code>, <code>google-zone</code>, <code>google-name</code>, <code>google-machine-type</code>, <code>google-image-project</code>, <code>google-image-family</code>, <code>google-image-id</code>, <code>google-subnet-cidr</code>, <code>google-boot-disk-size-gb</code>, <code>google-ssh-authorized-keys</code></td></tr>
-            <tr><td>DigitalOcean</td><td><code>digitalocean-name</code>, <code>digitalocean-region</code>, <code>digitalocean-size</code>, <code>digitalocean-image</code>, <code>digitalocean-ssh-keys</code>; optional <code>digitalocean-vpc-uuid</code></td></tr>
-            <tr><td>Hetzner</td><td><code>hcloud-name</code>, <code>hcloud-image</code>, <code>hcloud-server-type</code>, <code>hcloud-location</code>, <code>hcloud-ssh-keys</code></td></tr>
-            <tr><td>Vultr</td><td><code>vultr-name</code>, <code>vultr-region</code>, <code>vultr-plan</code>, <code>vultr-os-id</code>, <code>vultr-ssh-keys</code></td></tr>
-            <tr><td>Yandex</td><td><code>compute-pubkey</code>, <code>yandex-cloud-id</code>, <code>yandex-folder-id</code>, <code>yandex-zone</code>, <code>yandex-image-family</code>, <code>yandex-name</code>, <code>yandex-subnet-cidr</code>, <code>yandex-platform-id</code>, <code>yandex-cores</code>, <code>yandex-memory-gb</code>, <code>yandex-core-fraction</code>, <code>yandex-disk-size-gb</code></td></tr>
-            <tr><td>OCI</td><td><code>oci-config-file-profile</code>, <code>oci-subnet-id</code>, <code>oci-compartment-id</code>, <code>oci-availability-domain</code>, <code>oci-display-name</code>, <code>oci-shape</code>, <code>oci-ocpus</code>, <code>oci-memory-in-gbs</code>, <code>oci-boot-volume-size-in-gbs</code>, <code>oci-boot-volume-vpus-per-gb</code>, <code>oci-ssh-authorized-keys</code></td></tr>
-            <tr><td>Existing compute</td><td><code>no-infra-compute-ip</code>, <code>no-infra-compute-user</code>, <code>no-infra-compute-sudoer</code>, <code>no-infra-compute-uid</code></td></tr>
+            <tr><td>Azure</td><td><code>azure-subscription-id</code>, <code>azure-location</code>, <code>azure-resource-group</code>, <code>azure-name</code>, <code>azure-vm-size</code>, <code>azure-image-publisher</code>, <code>azure-image-offer</code>, <code>azure-image-sku</code>, <code>azure-image-version</code>, <code>azure-vnet-cidr</code>, <code>azure-subnet-cidr</code>, <code>azure-boot-disk-size-gb</code></td></tr>
+            <tr><td>AWS</td><td><code>aws-region</code>, <code>aws-availability-zone</code>, <code>aws-name</code>, <code>aws-instance-type</code>, <code>aws-image-id</code>, <code>aws-vpc-cidr</code>, <code>aws-subnet-cidr</code>, <code>aws-root-volume-size-gb</code></td></tr>
+            <tr><td>Google</td><td><code>google-project</code>, <code>google-region</code>, <code>google-zone</code>, <code>google-name</code>, <code>google-machine-type</code>, <code>google-image-project</code>, <code>google-image-family</code>, <code>google-image-id</code>, <code>google-subnet-cidr</code>, <code>google-boot-disk-size-gb</code></td></tr>
+            <tr><td>DigitalOcean</td><td><code>digitalocean-name</code>, <code>digitalocean-region</code>, <code>digitalocean-size</code>, <code>digitalocean-image</code>; optional <code>digitalocean-vpc-uuid</code></td></tr>
+            <tr><td>Hetzner</td><td><code>hcloud-name</code>, <code>hcloud-image</code>, <code>hcloud-server-type</code>, <code>hcloud-location</code></td></tr>
+            <tr><td>Vultr</td><td><code>vultr-name</code>, <code>vultr-region</code>, <code>vultr-plan</code>, <code>vultr-os-id</code></td></tr>
+            <tr><td>Yandex</td><td><code>yandex-cloud-id</code>, <code>yandex-folder-id</code>, <code>yandex-zone</code>, <code>yandex-image-family</code>, <code>yandex-name</code>, <code>yandex-subnet-cidr</code>, <code>yandex-platform-id</code>, <code>yandex-cores</code>, <code>yandex-memory-gb</code>, <code>yandex-core-fraction</code>, <code>yandex-disk-size-gb</code></td></tr>
+            <tr><td>OCI</td><td><code>oci-config-file-profile</code>, <code>oci-subnet-id</code>, <code>oci-compartment-id</code>, <code>oci-availability-domain</code>, <code>oci-display-name</code>, <code>oci-shape</code>, <code>oci-ocpus</code>, <code>oci-memory-in-gbs</code>, <code>oci-boot-volume-size-in-gbs</code>, <code>oci-boot-volume-vpus-per-gb</code></td></tr>
             <tr><td>Resend</td><td>None — the relay is hard-coded</td></tr>
             <tr><td>Existing SMTP</td><td><code>no-infra-smtp-server</code>, <code>no-infra-smtp-port</code>, <code>no-infra-smtp-username</code></td></tr>
             <tr><td>Yandex DNS</td><td><code>yandex-cloud-id</code>, <code>yandex-folder-id</code></td></tr>

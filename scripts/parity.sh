@@ -25,22 +25,19 @@ build_variant() {
     cd "$root/blue"
     env COLORS_PAR_WORKDIR="$tmp/$variant/blue" "$@" uv run python -m package_once_blue build -f "$state" >/dev/null
   )
-  diff -qr "$tmp/$variant/green/parity" "$tmp/$variant/red/parity"
-  diff -qr "$tmp/$variant/green/parity" "$tmp/$variant/blue/parity"
+  diff -qr "$tmp/$variant/green/build/parity" "$tmp/$variant/red/build/parity"
+  diff -qr "$tmp/$variant/green/build/parity" "$tmp/$variant/blue/build/parity"
 }
 
+# V2 always uses a named encrypted SSH resource. External key modes are
+# rejected; legacy helper contracts retain their separate driver matrix below.
 for provider in azure aws google digitalocean hcloud vultr yandex oci; do
-  build_variant "$provider-external" "COLORS_PAR_PROVIDER_COMPUTE=$provider"
+  build_variant "$provider" "COLORS_PAR_PROVIDER_COMPUTE=$provider"
 done
-build_variant external-identity COLORS_PAR_SSH_PRIVATE_KEY_PATH=/tmp/fixture-identity
+build_variant google-n4a COLORS_PAR_PROVIDER_COMPUTE=google COLORS_PAR_GOOGLE_MACHINE_TYPE=n4a-highmem-1 COLORS_PAR_GOOGLE_BOOT_DISK_TYPE=hyperdisk-balanced COLORS_PAR_GOOGLE_NIC_TYPE=GVNIC
 build_variant yandex-static COLORS_PAR_PROVIDER_COMPUTE=yandex COLORS_PAR_YANDEX_STATIC_IP=true COLORS_PAR_YANDEX_ALLOW_STOPPING_FOR_UPDATE=true
 build_variant yandex-pinned COLORS_PAR_PROVIDER_COMPUTE=yandex COLORS_PAR_YANDEX_IMAGE_ID=fd8example
 build_variant oci-pinned COLORS_PAR_PROVIDER_COMPUTE=oci COLORS_PAR_OCI_IMAGE_ID=ocid1.image.oc1.eu-frankfurt-1.aaaaaaaaexample
-sed '/^.*-ssh-authorized-keys:/d; /^.*-ssh-keys:/d; /^compute-pubkey:/d' "$state" > "$tmp/managed.yml"
-state="$tmp/managed.yml"
-for provider in azure aws google digitalocean hcloud vultr yandex oci; do
-  build_variant "$provider-managed" "COLORS_PAR_PROVIDER_COMPUTE=$provider"
-done
 build_variant no-infra-smtp COLORS_PAR_PROVIDER_SMTP=no-infra
 build_variant no-infra-dns COLORS_PAR_PROVIDER_DNS=no-infra
 build_variant yandex-dns COLORS_PAR_PROVIDER_DNS=yandex
@@ -199,3 +196,19 @@ done
 echo "green, red, and blue preserve DMARC policy, reporting address, domain scope, and existing SMTP resources"
 
 "$root/scripts/dmarc-parity.sh"
+
+# V2 access arguments, secret allowlist and refusals do not reach build artifacts.
+(cd "$root/green" && bb ../scripts/v2-green.clj "$root/test/parity/v2.json") > "$tmp/v2-green"
+(cd "$root/red" && bun ../scripts/v2-red.ts "$root/test/parity/v2.json") > "$tmp/v2-red"
+(cd "$root/blue" && uv run python ../scripts/v2-blue.py "$root/test/parity/v2.json") > "$tmp/v2-blue"
+diff -u "$tmp/v2-green" "$tmp/v2-red"
+diff -u "$tmp/v2-green" "$tmp/v2-blue"
+echo "green, red, and blue agree on v2 access, secret isolation and refusals"
+python3 - "$tmp/v2-green" <<'PYTHON'
+import json, sys
+result=json.load(open(sys.argv[1]))
+assert result['key_cleanup']==[True,True], 'temporary deploy keys survive failed workflow scope'
+assert result['registration_operations']==['create','inspect','inspect'], 'guarded create mutated registration'
+assert result['secret_env']=={'ONCE_PAR_APP_PASSWORD':'app-fixture','ONCE_PAR_RESEND_PASSWORD':'smtp-fixture'}, 'runtime credential isolation failed'
+print('v2 failure cleanup, ownership preflight and credential isolation meet the expected contract')
+PYTHON

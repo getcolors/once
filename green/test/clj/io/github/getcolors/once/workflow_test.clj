@@ -3,12 +3,14 @@
    [cheshire.core :as json]
    [clojure.java.io :as io]
    [clojure.string :as str]
-   [clojure.test :refer [deftest is testing]]
+   [clojure.test :refer [deftest is testing use-fixtures]]
    [green.ansible :as ansible]
    [green.tofu :as tofu]
    [green.workflow :as wf]
    [io.github.getcolors.once.tools :as tools]
    [io.github.getcolors.once.machine :as machine]
+   [io.github.getcolors.once.access :as access]
+   [io.github.getcolors.compute-node :as node]
    [io.github.getcolors.once.workflow :as sut]))
 
 (defn- temp-dir
@@ -23,12 +25,12 @@
     (io/delete-file f true)))
 
 (def ^:private valid
-  {:profile "test"
+  {:compute-api-version 2 :profile "test"
    :workdir ".green"
    :once {:applications [{:host "www.example.com"
                           :image "ghcr.io/example/site:latest"}]}
    :provider-compute "digitalocean"
-   :digitalocean-region "ams3" :digitalocean-size "s-1vcpu-1gb" :digitalocean-image "ubuntu" :digitalocean-ssh-keys "fixture-key"
+   :digitalocean-region "ams3" :digitalocean-size "s-1vcpu-1gb" :digitalocean-image "ubuntu"
    :compute-ssh-sources ["0.0.0.0/0"] :compute-http-sources ["0.0.0.0/0"]
    :provider-smtp "no-infra"
    :provider-dns "cloudflare"
@@ -40,6 +42,17 @@
    :no-infra-smtp-server "smtp.example.com"
    :no-infra-smtp-port 587
    :no-infra-smtp-username "user"})
+
+(use-fixtures :each
+  (fn [f]
+    (let [resource access/resource-step registration access/registration-step agent access/agent-step]
+      (with-redefs [access/lock! (fn [_])
+                    access/resource-step (fn [opts] (if (machine/planning? opts) (resource opts)
+                                                       (assoc opts :once/ssh-resource machine/placeholder-resource :green/exit 0)))
+                    access/registration-step (fn [opts] (if (machine/planning? opts) (registration opts)
+                                                           (assoc opts :once/ssh-registration (machine/placeholder-registration opts))))
+                    access/agent-step (fn [opts] (merge opts (select-keys (agent (assoc opts :green/dry-run true)) [:ssh-private-key-path :once/agent-socket])))]
+        (f)))))
 
 ;;; ------------------------------------------------------------------ start
 
@@ -87,7 +100,7 @@
          "compute destruction is protected")))
 
   (testing "the environment override releases it, as a boolean not a string"
-    (with-redefs [machine/load-inventory #(assoc % :green/exit 0)]
+    (with-redefs [machine/load-inventory (fn [opts & _] (assoc opts :green/exit 0))]
     (is (= 0 (:green/exit
               (sut/start-step (assoc valid :green/event :delete)
                               {"COLORS_PAR_DO_TOKEN" "fixture" "COLORS_PAR_NO_INFRA_SMTP_PASSWORD" "pw"
@@ -140,8 +153,8 @@
     (is (= [:once/tofu-smtp] (:once/tofu-dns g))
         "DNS must go before the records' targets")
     (is (= [:once/tofu-compute] (:once/tofu-smtp g)))
-    (is (= [] (:once/tofu-compute g))
-        "library compute destruction also owns key cleanup")
+    (is (= [:once/registration-delete] (:once/tofu-compute g))
+        "provider registration is released after compute; encrypted SSH authority is retained")
     (is (= [] (:once/ssh-cleanup g)))))
 
 (deftest build-follows-the-create-graph
@@ -202,7 +215,7 @@
 ;;; ------------------------------------------------------------------ end to end
 
 (def ^:private expected-build-artifacts
-  #{"tofu-compute/shared/backend.tf.json" "tofu-compute/nodes/0/backend.tf.json" "tofu-compute/shared/shared-none.tf.json" "tofu-compute/nodes/0/node-none.tf.json"
+  #{"once-compute/backend.tf.json" "once-compute/compute.tf.json" "registration-machine-access/backend.tf.json" "registration-machine-access/compute.tf.json"
     "tofu-smtp/backend.tf.json" "tofu-smtp/main.tf"
     "tofu-dns/backend.tf.json" "tofu-dns/main.tf"
     "tofu-dns/apps.tf.json" "tofu-dns/smtp.tf.json"
@@ -221,13 +234,17 @@
         (let [result (wf/run sut/workflow (assoc valid
                                                  :workdir workdir
                                                  :green/event :build))
-              root (io/file workdir "test")
+              root (io/file workdir "build" "test")
               rendered (->> (file-seq root)
                             (filter #(.isFile %))
                             (map #(str (.relativize (.toPath root) (.toPath %))))
                             set)]
           (is (= 0 (:green/exit result)) (:green/err result))
-          (is (= expected-build-artifacts rendered))))
+          (is (= expected-build-artifacts rendered))
+          (let [before (into {} (for [path rendered] [path (slurp (io/file root path))]))
+                again (wf/run sut/workflow (assoc valid :workdir workdir :green/event :build))]
+            (is (= 0 (:green/exit again)) (:green/err again))
+            (is (= before (into {} (for [path rendered] [path (slurp (io/file root path))])))))))
       (finally
         (delete-tree! workdir)))))
 
@@ -240,7 +257,7 @@
                                                :yandex-cloud-id "cloud-id"
                                                :yandex-folder-id "folder-id"
                                                :green/event :build))
-            dns (io/file (tools/tool-dir {:workdir workdir :profile "test"} "tofu-dns"))]
+            dns (io/file (tools/tool-dir {:workdir (str workdir "/build") :profile "test"} "tofu-dns"))]
         (is (= 0 (:green/exit result)) (:green/err result))
         (is (str/includes? (slurp (io/file dns "main.tf")) "yandex_dns_zone"))
         (is (.exists (io/file dns "apps.tf.json")))
@@ -255,7 +272,7 @@
                                                :workdir workdir
                                                :provider-dns "no-infra"
                                                :green/event :build))
-            dns (io/file (tools/tool-dir {:workdir workdir :profile "test"} "tofu-dns"))]
+            dns (io/file (tools/tool-dir {:workdir (str workdir "/build") :profile "test"} "tofu-dns"))]
         (is (= 0 (:green/exit result)) (:green/err result))
         (is (.exists (io/file dns "main.tf")))
         (is (not (.exists (io/file dns "apps.tf.json"))))
@@ -303,8 +320,8 @@
 
 (deftest retired-delete-stops-before-key-files-or-application-cleanup
   (let [calls (atom []) env {"COLORS_PAR_DO_TOKEN" "fixture" "COLORS_PAR_NO_INFRA_SMTP_PASSWORD" "pw" "COLORS_PAR_CLOUDFLARE_API_TOKEN" "cf"}
-        opts (dissoc (assoc valid :green/event :delete :compute-prevent-destroy false) :digitalocean-ssh-keys)]
-    (with-redefs [io.github.getcolors.compute-inspection/read-deployment (fn [& _] (swap! calls conj :read) {:status "destroyed"})
+        opts (dissoc (assoc valid :green/event :delete :compute-prevent-destroy false :once/registration-destroyed true) :digitalocean-ssh-keys)]
+    (with-redefs [node/compute-node! (fn [& _] (swap! calls conj :read) {:status "destroyed"})
                   tofu/outputs (fn [& _] (throw (AssertionError. "retired delete read application state")))]
       (let [graph (wf/workflow {:start :once/start :wire-fn (fn [step o]
                               (let [[_ & next] (sut/wire-fn step o)]
@@ -314,7 +331,7 @@
             result (wf/run graph opts)]
         (is (= 0 (:green/exit result)))
         (is (= [:read] @calls))
-        (is (= 1 (:green/exit (machine/load-inventory (assoc opts :green/event :create) {}))))
+        (is (= 1 (:green/exit (machine/load-inventory (assoc opts :green/event :create :once/ssh-resource machine/placeholder-resource :once/ssh-registration (machine/placeholder-registration (assoc opts :once/ssh-resource machine/placeholder-resource))) {}))))
         (is (= [] (sut/next-steps :once/start [:once/github] {:green/exit 1})))))))
 
 (deftest failed-local-cleanup-never-invokes-remote

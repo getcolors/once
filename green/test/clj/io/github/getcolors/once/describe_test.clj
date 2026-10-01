@@ -2,7 +2,7 @@
   (:require
    [cheshire.core :as json]
    [clojure.string :as str]
-   [clojure.test :refer [deftest is testing]]
+   [clojure.test :refer [deftest is testing use-fixtures]]
    [io.github.getcolors.once.describe :as d]
    [io.github.getcolors.once.tools :as tools]))
 
@@ -33,6 +33,12 @@
 (defn- once-command-check
   []
   @#'d/once-command-check-args)
+
+(use-fixtures :each
+  (fn [f]
+    (with-redefs [io.github.getcolors.once.machine/load-inventory
+                  (fn [opts] (assoc opts :green/exit 1 :green/err "compute inventory unavailable"))]
+      (f))))
 
 (deftest provider-summary-extracts-provider-names
   (is (= {:compute "digitalocean"

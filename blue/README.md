@@ -2,18 +2,38 @@
 
 ## Shared compute lifecycle
 
-The package pins colors-compute for VM providers, remote compute state and SSH
-ownership. One host uses the same operation as a cluster node, with an unnumbered
-cloud name and a profile-based SSH alias. Compute now finishes before SMTP.
-A legacy-state or ownership failure therefore prevents application resource
-creation. Provider support comes from the library dependency.
+ONCE uses colors-compute v2 for new deployments only. Set
+`compute-api-version: 2`. Existing deployments keep their pinned launchers,
+configuration, keys and state untouched; no migration, adoption or compatibility
+layer is supplied. Provider support comes from the library dependency.
 
-Compute uses `<profile>/compute/shared.tfstate`, `<profile>/compute/nodes/0.tfstate`
-and `<profile>/compute/coordination.json`. Existing `tofu-compute.tfstate` needs
-an explicit state migration before convergence. R2 and S3 are supported;
-local compute state and `provider-compute: no-infra` are refused. Supply
-`compute-ssh-sources` and `compute-http-sources`, or the selected provider's
-legacy source keys. See the bundled skill's configuration reference for details.
+The node is `once-compute`, named `<profile>-once-compute` in the cloud, with
+state at `<profile>/once-node-0.tfstate`. Providers requiring a separate public
+key registration use `<profile>/once-ssh-registration.tfstate`. Encrypted SSH
+authority is retained at `<profile>/ssh/machine-access/resource.json` in the
+backend. Supply `COLORS_PAR_ONCE_SSH_PASSPHRASE` at runtime and back it up;
+changing the binding does not rotate encryption. No decrypted private key is
+persisted. Operator SSH, describe and application convergence use a temporary
+scoped agent and a public identity cache. Use the launcher's `ssh` command.
+
+R2 and S3 are supported; local compute state and `provider-compute: no-infra`
+are refused. Supply `compute-ssh-sources` and `compute-http-sources`, or the
+selected provider's legacy source keys. Compute completes before SMTP and DNS;
+local alias ownership is checked before remote application convergence.
+`compute-require-existing-state: true` guards subsequent creates against missing
+ownership; it is not an import or migration operation. Build renders under
+`.colors/build/<profile>/`; dry-run performs no state reads or writes.
+
+Delete withdraws GitHub deployment credentials, removes local aliases and
+application stages, then destroys DNS, SMTP, compute and provider registration
+in order. It retains encrypted SSH authority. Valid destroyed compute state
+allows repeated delete to finish before host access or key unlocking; missing
+or incompatible ownership fails. Destroy protection remains enabled by default.
+
+Application and SMTP credentials enter through `COLORS_PAR_*`; ONCE forwards
+only selected values to Ansible as `ONCE_PAR_*` runtime bindings. Generated
+files contain lookups, never secret values.
+
 
 
 The Python/uv implementation of the production ONCE deployment package. It is

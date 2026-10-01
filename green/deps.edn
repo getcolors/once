@@ -2,10 +2,10 @@
  ;; Pinned by sha so this project resolves as a git dependency elsewhere — the
  ;; launcher fetches it that way. Temporarily use a local-root coordinate when
  ;; developing both checkouts together.
- :deps    {io.github.getcolors/colors-compute {:git/url "https://github.com/getcolors/colors-compute.git" :git/sha "ae28ea74962bb1897fa6365c143c1d43ac1fe095" :deps/root "green"}
+ :deps    {io.github.getcolors/colors-compute {:git/url "https://github.com/getcolors/colors-compute.git" :git/sha "59acb202029ea1061c2c68d0a6ad2bb509eccad4" :deps/root "green"}
            org.clojure/clojure          {:mvn/version "1.12.5"}
            io.github.getcolors/green      {:git/url "https://github.com/getcolors/green.git"
-                                         :git/sha "a918861cfb4d7958cf37fd0c8d2e19e0da5b6f47"}}
+                                         :git/sha "7f1f94463ac7914598db419ac221546fb7e3cbec"}}
  :aliases {:dev  {:extra-paths ["env/dev/clj" "test/clj" "test/resources"]}
            :test {:extra-paths ["test/clj" "test/resources"]
                   :extra-deps {io.github.cognitect-labs/test-runner {:git/tag "v0.5.1" :git/sha "dfb30dd"}}

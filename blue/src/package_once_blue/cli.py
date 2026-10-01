@@ -6,8 +6,9 @@ from blue.cli import find_up, run_cli
 
 from .describe import describe_file
 from .workflow import once_workflow
+from . import access
 
-USAGE = "Usage: blue <build|create|delete|describe> [-f|--file colors.yml] [--dry-run]"
+USAGE = "Usage: blue <build|create|delete|describe|ssh> [-f|--file colors.yml] [--dry-run]"
 
 
 
@@ -34,8 +35,8 @@ async def run(*input: str) -> dict:
         return {"blue/exit": 0, "blue/err": USAGE}
     if command == "describe":
         return await describe_file(_file(args))
-    if command in ("build", "create", "delete"):
-        return await run_cli(once_workflow, args)
+    if command in ("build", "create", "delete", "ssh"):
+        return await access.scoped(lambda: run_cli(once_workflow, args))
     return {"blue/exit": 2, "blue/err": USAGE}
 
 

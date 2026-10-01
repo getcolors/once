@@ -1,3 +1,4 @@
+import {scoped} from "../src/access.ts";
 import { expect, test } from "bun:test";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,6 +14,7 @@ import { onceWorkflow, startStep, wireFn } from "../src/workflow.ts";
 
 const valid = {
   profile: "test",
+  "compute-api-version": 2,
   workdir: ".once",
   once: { applications: [{ host: "www.example.com", image: "example/app:latest" }] },
   "provider-compute": "digitalocean",
@@ -26,7 +28,7 @@ const valid = {
   "digitalocean-region": "ams3",
   "digitalocean-size": "s-1vcpu-1gb",
   "digitalocean-image": "ubuntu",
-  "digitalocean-ssh-keys": "key-id",
+
 };
 
 function files(root: string): string[] {
@@ -85,12 +87,12 @@ test("Ansible rendering defers secrets and is color-portable", () => {
     once: { applications: [{ host: "www.example.com", image: "app", env: { DATABASE_URL: "app-database-url" } }] },
   });
   expect(yaml).not.toContain("real-secret");
-  expect(yaml).toContain("COLORS_PAR_APP_DATABASE_URL");
+  expect(yaml).toContain("ONCE_PAR_APP_DATABASE_URL");
 });
 
 test("validation and lifecycle safety", async () => {
   expect(stateErrors(valid)).toEqual([]);
-  expect((await startStep({ ...valid, "red/event": "build" }, {}))["red/exit"]).toBe(0);
+  expect((await scoped(() => startStep({ ...valid, "red/event": "build" }, {})))["red/exit"]).toBe(0);
   const created = await startStep({ ...valid, "red/event": "create" }, {});
   expect(created["red/exit"]).toBe(2);
   expect(created["red/err"]).toMatch(/COLORS_PAR_DO_TOKEN/);
@@ -115,9 +117,11 @@ test("dry-run needs no credentials and touches nothing", async () => {
 test("a build renders the complete production tree without tools", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "once-red-"));
   try {
-    const result = await runWorkflow(onceWorkflow, { ...valid, workdir, "red/event": "build" });
+    const result = await scoped(() => runWorkflow(onceWorkflow, { ...valid, workdir, "red/event": "build" }));
     expect(result["red/exit"]).toBe(0);
-    expect(files(join(workdir, "test"))).toHaveLength(23);
+    expect(files(join(workdir, "build", "test"))).toHaveLength(24);
+    const repeated = await scoped(() => runWorkflow(onceWorkflow, { ...valid, workdir, "red/event": "build" }));
+    expect(repeated["red/exit"]).toBe(0);
   } finally { rmSync(workdir, { recursive: true, force: true }); }
 });
 

@@ -10,7 +10,8 @@ from blue.runtime import ExecResult, runtime
 
 from blue.cli import read_pars
 
-from .ssh import identity_args, with_machine_key
+from .access import identity_args
+from . import access
 from . import machine
 from .tools import backend_credential_env, tool_dir
 
@@ -37,7 +38,7 @@ def _target(params: dict) -> dict:
         ip = params.get("no-infra-compute-ip")
     # The keygen identity travels with the target so every probe names the
     # machine key explicitly; in opt-out mode the target is unchanged.
-    identity = {"ssh-keygen": params.get("ssh-keygen"), "ssh-private-key-path": params.get("ssh-private-key-path")} if params.get("ssh-keygen") else {}
+    identity = {"ssh-keygen": params.get("ssh-keygen"), "ssh-private-key-path": params.get("ssh-private-key-path"), "once/agent-socket": params.get("once/agent-socket")} if params.get("ssh-keygen") else {}
     return {"ip": ip, "user": params.get("user") or params.get("sudoer") or params.get("no-infra-compute-user") or params.get("no-infra-compute-sudoer") or "root", **identity}
 
 
@@ -216,8 +217,8 @@ def print_report(report: dict) -> None:
             print(f"  - {_present(app.get('host'))}\n    status: {_present(app.get('status'))}\n    image: {_present(app.get('image'))}\n    version: {_present(app.get('version'))}\n    digest: {_present(app.get('digest'))}\n    registry digest: {_present(app.get('registry-digest'))}\n    update available: {update}")
 
 
-async def describe(opts: dict) -> dict:
-    report = await describe_report(opts)
+async def describe(opts: dict, resolve: bool = True) -> dict:
+    report = await describe_report(opts, resolve=resolve)
     print_report(report)
     if report.get("fatal-error?"):
         return {**opts, "once.describe/result": report, "blue/exit": 1, "blue/err": report.get("applications-error") or "describe failed"}
@@ -232,11 +233,17 @@ async def describe_file(path: str) -> dict:
         file = Path(path)
         if not file.exists():
             return {"blue/exit": 2, "blue/err": f"desired state file not found: {path}"}
-        # Describe reads the live host, so it needs the keygen identity the
-        # way create does — real event semantics, opt-out untouched.
-        return await describe(with_machine_key(read_pars({
-            **load_yaml(file.read_text()),
-            "blue/state-file": str(file.resolve()),
-        }), True))
+        async def run():
+            opts = read_pars({**load_yaml(file.read_text()), "blue/state-file": str(file.resolve()), "blue/event": "describe"})
+            errors = machine.errors(opts)
+            if errors:
+                return {**opts, "blue/exit": 2, "blue/err": "\n".join(errors)}
+            access.lock(opts)
+            for step in (access.resource_step, access.registration_step, machine.load, access.agent_step):
+                opts = await step(opts)
+                if opts.get("blue/exit"):
+                    return opts
+            return await describe(opts, resolve=False)
+        return await access.scoped(run)
     except Exception as error:
         return {"blue/exit": 2, "blue/err": str(error) or type(error).__name__}

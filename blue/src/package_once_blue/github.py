@@ -37,7 +37,7 @@ from typing import Awaitable, Callable
 from blue.process import run_plan
 from blue.runtime import ExecResult, runtime
 
-from .ssh import identity_args
+from .access import identity_args, register_cleanup
 from .validate import deploy_groups
 
 _RUN_TIMEOUT_MS = 30_000
@@ -95,21 +95,30 @@ async def generate_keys(opts: dict, run_fn: Runner | None = None) -> tuple[list[
     if not groups:
         return [], None
     directory = tempfile.mkdtemp(prefix="once-deploy")
-    keys: list[dict] = []
-    for index, group in enumerate(groups):
-        path = str(Path(directory) / f"key-{index}")
-        result = await run(_keygen_args(opts, group["github"], path))
-        if result.exit != 0:
-            return [], f"ssh-keygen failed for {group['github']}: {str(result.err or '').strip()}"
-        keys.append(
-            {
-                "hosts": group["hosts"],
-                "github": group["github"],
-                "public": Path(f"{path}.pub").read_text().strip(),
-                "private-file": path,
-            }
-        )
-    return keys, None
+    def cleanup():
+        shutil.rmtree(directory, ignore_errors=True)
+    try:
+        register_cleanup(cleanup)
+        keys: list[dict] = []
+        for index, group in enumerate(groups):
+            path = str(Path(directory) / f"key-{index}")
+            result = await run(_keygen_args(opts, group["github"], path))
+            if result.exit != 0:
+                cleanup()
+                return [], f"ssh-keygen failed for {group['github']}: {str(result.err or '').strip()}"
+            keys.append(
+                {
+                    "hosts": group["hosts"],
+                    "github": group["github"],
+                    "public": Path(f"{path}.pub").read_text().strip(),
+                    "private-file": path,
+                }
+            )
+        return keys, None
+    except BaseException:
+        cleanup()
+        raise
+
 
 
 def public_keys(opts: dict) -> list[dict]:

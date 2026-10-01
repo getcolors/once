@@ -11,8 +11,8 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-  "blue @ git+https://github.com/getcolors/blue.git@ec33f05543dc7f1d380fd61d40af56362960fcb9",
-  "colors-compute-blue @ git+https://github.com/getcolors/colors-compute.git@ae28ea74962bb1897fa6365c143c1d43ac1fe095#subdirectory=blue",
+  "blue @ git+https://github.com/getcolors/blue.git@784018bb586882efbd91affd42139582a40ea1d1",
+  "colors-compute-blue @ git+https://github.com/getcolors/colors-compute.git@59acb202029ea1061c2c68d0a6ad2bb509eccad4#subdirectory=blue",
   "pytest>=8.0",
   "pytest-asyncio>=0.24",
 ]

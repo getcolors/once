@@ -138,7 +138,10 @@
                           for host in hosts:
                               block.extend(['Host ' + host['name'], '    HostName ' + host['ip'], '    User ' + host['user'], '    Port 22'])
                               if payload['keygen']:
-                                  block.extend(['    IdentityFile ~/.ssh/' + profile, '    IdentitiesOnly yes'])
+                                  identity = host.get('identity_file', '')
+                                  if not isinstance(identity, str) or not identity.startswith('/') or any(c in identity for c in '\r\n\x00\"'):
+                                      raise ValueError('invalid public identity path')
+                                  block.extend(['    IdentityFile \"' + identity + '\"', '    IdentitiesOnly yes', '    IdentityAgent none', '    ControlMaster no', '    ControlPersist no', '    ControlPath none'])
                               block.extend(['    StrictHostKeyChecking accept-new', '    ForwardAgent no'])
                           new = '\n'.join(block + [end, '']) + remainder
                       else:

@@ -4,6 +4,8 @@
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
    [green.process :as process]
+   [green.workflow :as wf]
+   [io.github.getcolors.once.access :as access]
    [io.github.getcolors.once.github :as sut]
    [io.github.getcolors.once.tools :as tools]))
 
@@ -281,3 +283,47 @@
           first-run (reconcile! [(line "acme/a" ["a.example.com"] "A1")] existing)]
       (is (= "unchanged" (:status first-run)))
       (is (= existing (:lines first-run))))))
+
+(defn- fake-keygen [paths outcome]
+  (fn [args _ _]
+    (let [path (last args)]
+      (swap! paths conj path)
+      (spit path "fixture-private")
+      (spit (str path ".pub") "ssh-ed25519 fixture-public")
+      (case outcome
+        :error {:exit 1 :err "generation refused"}
+        :throw (throw (ex-info "generation interrupted" {}))
+        {:exit 0}))))
+
+(deftest failed-generation-cleans-keys-without-a-scope
+  (doseq [outcome [:error :throw]]
+    (let [paths (atom [])]
+      (if (= outcome :throw)
+        (is (thrown-with-msg? Exception #"generation interrupted"
+              (sut/generate-keys opts (fake-keygen paths outcome))))
+        (is (second (sut/generate-keys opts (fake-keygen paths outcome)))))
+      (is (seq @paths))
+      (is (every? #(not (.exists (.getParentFile (io/file %)))) @paths)))))
+
+(deftest early-workflow-failure-finalizes-deployment-key-directory
+  (let [paths (atom [])
+        graph (wf/workflow
+               {:start :test/keys
+                :wire-fn (fn [step _]
+                           (case step
+                             :test/keys [(fn [opts]
+                                           (let [[keys error] (sut/generate-keys opts (fake-keygen paths :ok))]
+                                             (is (nil? error))
+                                             (is (.exists (io/file (:private-file (first keys)))))
+                                             (assoc opts :once/deploy-keys keys))) :test/compute]
+                             :test/compute [(fn [opts] (assoc opts :green/exit 1 :green/err "compute failed"))]))})
+        result (access/scoped #(wf/run graph opts))]
+    (is (= 1 (:green/exit result)))
+    (is (seq @paths))
+    (is (every? #(not (.exists (.getParentFile (io/file %)))) @paths))))
+
+(deftest generation-exception-cleans-up-idempotently-within-a-scope
+  (let [paths (atom [])]
+    (is (thrown-with-msg? Exception #"generation interrupted"
+          (access/scoped #(sut/generate-keys opts (fake-keygen paths :throw)))))
+    (is (every? #(not (.exists (.getParentFile (io/file %)))) @paths))))

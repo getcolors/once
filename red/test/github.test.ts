@@ -1,6 +1,10 @@
+import {existsSync,writeFileSync} from "node:fs";
+import {dirname} from "node:path";
+import {scoped} from "../src/access.ts";
 import { expect, test } from "bun:test";
 import {
   commands,
+  generateKeys,
   githubStep,
   keyComment,
   placeholderKeys,
@@ -164,4 +168,24 @@ test("a host key becomes a known_hosts line", () => {
     .toBe("203.0.113.10 ssh-ed25519 AAAAC3Nz");
   expect(knownHostsLine("203.0.113.10", "")).toBeUndefined();
   expect(knownHostsLine("203.0.113.10", "No such file or directory")).toBeUndefined();
+});
+
+
+for (const fail of [false,true]) test(`deployment keys are cleaned when scope exits, failure=${fail}`,async()=>{
+ let directory='';
+ const body=async()=>{
+  const [keys,error]=await generateKeys(opts,async args=>{
+   const path=args[args.length-1]!;directory=dirname(path);writeFileSync(path,'private fixture');writeFileSync(path+'.pub','public fixture');return {exit:0,out:'',err:''};
+  });
+  expect(error).toBeUndefined();expect(keys).toHaveLength(1);expect(existsSync(directory)).toBe(true);
+  if(fail)throw Error('compute failed');
+ };
+ if(fail)await expect(scoped(body)).rejects.toThrow('compute failed');else await scoped(body);
+ expect(existsSync(directory)).toBe(false);
+});
+for(const failure of ['exit','throw','missing-public'])test(`partial key generation cleans unscoped files: ${failure}`,async()=>{
+ let directory='';
+ const run=()=>generateKeys(opts,async args=>{const path=args[args.length-1]!;directory=dirname(path);writeFileSync(path,'partial private fixture');if(failure==='throw')throw Error('runner failed');return {exit:failure==='exit'?1:0,out:'',err:'failed'};});
+ if(failure==='exit')expect((await run())[1]).toContain('ssh-keygen failed');else await expect(run()).rejects.toThrow();
+ expect(existsSync(directory)).toBe(false);
 });

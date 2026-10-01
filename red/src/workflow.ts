@@ -1,3 +1,4 @@
+import * as access from "./access.ts";
 import * as machine from "./machine.ts";
 import { parName } from "red/cli";
 import * as dryRun from "red/dry-run";
@@ -60,11 +61,25 @@ export async function startStep(
         ? [`compute destruction is protected; set ${parName("compute-prevent-destroy")}=false to delete`] : [],
     ],
     afterValidate: async (opts, _env, ctx) => {
-      if (ctx.real && ctx.event === 'delete') return adoptExistingState(opts);
+      if (ctx.event === "build") opts = {...opts, workdir: String(opts.workdir ?? ".colors") + "/build"};
+      opts = await access.resourceStep(opts);
+      if (failed(opts)) return opts;
+      opts = await access.registrationStep(opts);
+      if (failed(opts)) return opts;
+      if (ctx.real && ctx.event === 'delete') {
+        opts = await adoptExistingState(opts);
+        if (failed(opts) || opts['colors-compute/already-destroyed']) return opts;
+      }
       if (ctx.real && ctx.event === 'create' && opts['compute-require-existing-state'] === true) {
         opts = await machine.load(opts, _env);
-        if (opts['red/exit']) return opts;
+        if (failed(opts)) return opts;
       }
+      if (ctx.event === 'ssh') {
+        opts = await access.connectionStep(opts);
+        if (failed(opts)) return opts;
+      }
+      if (["create", "build", "ssh"].includes(String(ctx.event))) opts = await access.agentStep(opts);
+      if (failed(opts)) return opts;
       return withDeployKeys(opts, ctx.real);
     },
   }, env);
@@ -76,9 +91,13 @@ export async function ansibleCleanupStep(opts: Opts): Promise<Opts> {
 }
 
 export const tofuSteps = ["once/tofu-compute", "once/tofu-smtp", "once/tofu-dns", "once/tofu-smtp-post"];
-export const sideEffectingSteps = [...tofuSteps, "once/ansible-local", "once/ansible-remote", "once/ansible-cleanup", "once/github", "once/ssh-cleanup"];
+export const sideEffectingSteps = [...tofuSteps, "once/ansible-local", "once/ansible-remote", "once/ansible-cleanup", "once/github", "once/ssh-cleanup", "once/registration-delete", "once/ssh"];
 
 export function wireFn(step: string, runOpts: Opts) {
+  if (runOpts["red/event"] === "ssh") {
+    if (step === "once/start") return [startStep, "once/ssh"] as const;
+    if (step === "once/ssh") return [access.sshStep] as const;
+  }
   if (runOpts["red/event"] === "delete") {
     switch (step) {
       // Revoking runs before anything is destroyed: a withdrawn credential
@@ -94,7 +113,8 @@ export function wireFn(step: string, runOpts: Opts) {
       // The local keypair goes last, strictly after a successful compute
       // destroy: a failed delete leaves the key, which is still the only
       // credential to whatever survived.
-      case "once/tofu-compute": return [tools.tofuComputeStep] as const;
+      case "once/tofu-compute": return [tools.tofuComputeStep, "once/registration-delete"] as const;
+      case "once/registration-delete": return [access.registrationDeleteStep] as const;
       case "once/ssh-cleanup": return [ssh.cleanupStep] as const;
     }
   } else {
@@ -121,7 +141,8 @@ export function backendAdvice(tool: string) {
 }
 
 export function nextSteps(step:string, successors:string[]|null, opts:Opts):[string,Opts][] {
-  if(failed(opts)||(step==='once/start'&&opts['red/event']==='delete'&&opts['colors-compute/already-destroyed']===true))return [];
+  if(failed(opts))return [];
+  if(step==='once/start'&&opts['red/event']==='delete'&&opts['colors-compute/already-destroyed']===true)return machine.registration(opts)&&!opts['once/registration-destroyed']? [['once/registration-delete',opts]]:[];
   return (successors??[]).map(successor=>[successor,opts]);
 }
 function createWorkflow() {

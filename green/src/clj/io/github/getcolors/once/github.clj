@@ -30,7 +30,7 @@
    [clojure.java.io :as io]
    [clojure.string :as str]
    [green.process :as process]
-   [io.github.getcolors.once.ssh :as ssh]
+   [io.github.getcolors.once.access :as access]
    [io.github.getcolors.once.validate :as validate]))
 
 (def ^:private run-timeout-ms 30000)
@@ -70,12 +70,15 @@
    "-C" (key-comment opts github)
    "-f" path])
 
-(defn generate-keys
-  "Generate one keypair per repository named in desired state, into a private
-  directory. Returns `[keys error]`; `keys` carries the public key inline and
-  the private key only as a path, so the secret never enters the opts map.
+(defn- remove-key-directory! [dir]
+  (when (.exists (io/file dir))
+    (doseq [file (reverse (file-seq (io/file dir)))]
+      (java.nio.file.Files/deleteIfExists (.toPath file)))))
 
-  The caller removes `:once/key-dir` once publication is done."
+(defn generate-keys
+  "Generate temporary application deployment keys. Scope cleanup is registered
+  before key generation, covering every later workflow exit. Direct callers
+  retain successful keys for publication but generation failures clean up."
   ([opts] (generate-keys opts process/run-with-timeout))
   ([opts run-fn]
    (let [groups (validate/deploy-groups opts)]
@@ -83,20 +86,29 @@
        [[] nil]
        (let [dir (str (java.nio.file.Files/createTempDirectory
                        "once-deploy"
-                       (into-array java.nio.file.attribute.FileAttribute [])))]
-         (loop [[group & more] groups idx 0 acc []]
-           (if-not group
-             [acc nil]
-             (let [path (str (io/file dir (str "key-" idx)))
-                   result (run-fn (keygen-args opts (:github group) path) {} run-timeout-ms)]
-               (if-not (zero? (:exit result -1))
-                 [nil (format "ssh-keygen failed for %s: %s"
-                              (:github group) (str/trim (str (:err result))))]
-                 (recur more (inc idx)
-                        (conj acc {:hosts (:hosts group)
-                                   :github (:github group)
-                                   :public (str/trim (slurp (str path ".pub")))
-                                   :private-file path})))))))))))
+                       (into-array java.nio.file.attribute.FileAttribute [])))
+             cleanup #(remove-key-directory! dir)]
+         (try
+           (when access/*register!* (access/*register!* :resource cleanup))
+           (let [result
+                 (loop [[group & more] groups idx 0 acc []]
+                   (if-not group
+                     [acc nil]
+                     (let [path (str (io/file dir (str "key-" idx)))
+                           result (run-fn (keygen-args opts (:github group) path) {} run-timeout-ms)]
+                       (if-not (zero? (:exit result -1))
+                         [nil (format "ssh-keygen failed for %s: %s"
+                                      (:github group) (str/trim (str (:err result))))]
+                         (recur more (inc idx)
+                                (conj acc {:hosts (:hosts group)
+                                           :github (:github group)
+                                           :public (str/trim (slurp (str path ".pub")))
+                                           :private-file path}))))))]
+             (when (second result) (cleanup))
+             result)
+           (catch Throwable error
+             (try (cleanup) (catch Throwable cleanup-error (.addSuppressed error cleanup-error)))
+             (throw error))))))))
 
 (defn public-keys
   "The render-facing view: hosts and public key only. `tools` builds the
@@ -129,7 +141,7 @@
   [opts]
   (-> ["ssh" "-o" "BatchMode=yes" "-o" "ConnectTimeout=10"
        "-o" "StrictHostKeyChecking=accept-new"]
-      (into (ssh/identity-args opts))
+      (into (access/identity-args opts))
       (conj (str (or (:user opts) "root") "@" (:ip opts))
             "cat /etc/ssh/ssh_host_ed25519_key.pub")))
 
@@ -221,8 +233,7 @@
 (defn- cleanup!
   [opts]
   (when-let [dir (:once/key-dir opts)]
-    (doseq [f (reverse (file-seq (io/file dir)))]
-      (.delete ^java.io.File f)))
+    (remove-key-directory! dir))
   (-> opts
       (dissoc :once/key-dir)
       (update :once/deploy-keys #(mapv (fn [k] (dissoc k :private-file)) (or % [])))))

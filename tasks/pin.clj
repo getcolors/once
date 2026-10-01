@@ -12,10 +12,8 @@
   green while red and blue keep advertising the commit before it, which is
   exactly what happened when this task owned `package-once-green/green` alone.
 
-  `green-sha` moves too when GREEN_LIB_ROOT points at a green checkout, because
-  a change that spans both repositories has to pin both. Blue and red pin their
-  own frameworks in the same payloads, but neither launcher can be pointed at a
-  working tree the way green's can, so nothing here moves those."
+  Optional GREEN_LIB_ROOT, RED_LIB_ROOT, BLUE_LIB_ROOT and COMPUTE_LIB_ROOT
+  checkouts also stamp their published HEADs into the bundled launchers."
   (:require
    [clojure.java.io :as io]
    [clojure.java.shell :as sh]
@@ -39,6 +37,20 @@
 (def ^:private green-site
   {:path "skills/package-once-green/green"
    :rx #"\(def \^:private green-sha \"([0-9a-f]{40})\"\)"})
+
+(def ^:private dependency-sites
+  [{:env "GREEN_LIB_ROOT" :label "green" :sites [green-site]}
+   {:env "RED_LIB_ROOT" :label "red"
+    :sites [{:path "skills/package-once-red/red"
+             :rx #"\"red\": \"github:getcolors/red#([0-9a-f]{40})\""}]}
+   {:env "BLUE_LIB_ROOT" :label "blue"
+    :sites [{:path "skills/package-once-blue/blue"
+             :rx #"# blue = \{ git = \"[^\"]*getcolors/blue[^\"]*\", rev = \"([0-9a-f]{40})\""}]}
+   {:env "COMPUTE_LIB_ROOT" :label "colors-compute"
+    :sites [{:path "skills/package-once-red/red"
+             :rx #"\"colors-compute-red\": \"github:getcolors/colors-compute#([0-9a-f]{40})\""}
+            {:path "skills/package-once-blue/blue"
+             :rx #"# colors-compute-blue = \{ git = \"[^\"]*getcolors/colors-compute[^\"]*\", rev = \"([0-9a-f]{40})\""}]}])
 
 (defn- git
   [dir & args]
@@ -119,11 +131,15 @@
                        (map :path)
                        sort
                        vec)
-        green-root (System/getenv "GREEN_LIB_ROOT")
         [once-head once-err] (repo-head "." "once")
-        [green-head green-err] (if green-root
-                                 (repo-head green-root "green")
-                                 [nil nil])]
+        dependencies (vec (for [{:keys [env label sites]} dependency-sites
+                                :let [root (System/getenv env)] :when root
+                                :let [[sha error] (repo-head root label)]]
+                            {:label label :sha sha :error error :sites sites}))
+        dependency-error (some :error dependencies)
+        dependency-unmatched (for [{:keys [sites]} dependencies site sites
+                                   :when (not (current-pin (slurp (:path site)) site))]
+                               (:path site))]
     (cond
       (seq unclaimed)
       {:green/exit 2
@@ -138,31 +154,33 @@
       {:green/exit 2 :green/err (str "could not locate the pin in " (str/join ", " unmatched))}
 
       once-err {:green/exit 2 :green/err once-err}
-      green-err {:green/exit 2 :green/err green-err}
+      dependency-error {:green/exit 2 :green/err dependency-error}
+      (seq dependency-unmatched)
+      {:green/exit 2 :green/err (str "could not locate dependency pin in " (str/join ", " dependency-unmatched))}
 
       :else
       (let [stale (filter #(not= once-head (current-pin (:text %) %)) sites)
-            green-text (slurp (:path green-site))
-            green-pin (current-pin green-text green-site)
-            green-stale? (and green-head (not= green-head green-pin))]
-        (if-not (or (seq stale) green-stale?)
+            dependency-stale (for [{:keys [label sha sites]} dependencies site sites
+                                   :let [old (current-pin (slurp (:path site)) site)]
+                                   :when (not= sha old)]
+                               {:label label :sha sha :old old :site site})]
+        (if-not (or (seq stale) (seq dependency-stale))
           {:green/exit 0 :green/err (str "already pinned to " (subs once-head 0 7))}
           (do
             (doseq [{:keys [path text] :as site} stale]
               (spit path (replace-pin text site once-head)))
-            (when green-stale?
-              ;; re-read: the green payload may have just been rewritten above
-              (spit (:path green-site)
-                    (replace-pin (slurp (:path green-site)) green-site green-head)))
+            (doseq [{:keys [site sha]} dependency-stale]
+              ;; Re-read: another pin in this payload may have just changed.
+              (spit (:path site) (replace-pin (slurp (:path site)) site sha)))
             {:green/exit 0
              :green/err (str/join
                          "\n"
-                         (cond-> (mapv #(str "pinned " (:path %) " to " (subs once-head 0 7)
+                         (concat (mapv #(str "pinned " (:path %) " to " (subs once-head 0 7)
                                              " (was " (subs (current-pin (:text %) %) 0 7) ")")
                                        stale)
-                           green-stale?
-                           (conj (str "pinned green to " (subs green-head 0 7)
-                                      " (was " (subs green-pin 0 7) ")"))))}))))))
+                           (map (fn [{:keys [label sha old]}]
+                                  (str "pinned " label " to " (subs sha 0 7)
+                                       " (was " (subs old 0 7) ")")) dependency-stale)))}))))))
 
 (defn -main
   [& _]

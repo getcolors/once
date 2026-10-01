@@ -1,0 +1,161 @@
+{
+  "base": {
+    "profile": "fixture",
+    "workdir": "/tmp/once-v2-fixture",
+    "compute-api-version": 2,
+    "provider-compute": "google",
+    "provider-backend": "r2",
+    "r2-bucket": "fixture-state",
+    "r2-endpoint": "https://example.r2.cloudflarestorage.com",
+    "google-project": "example",
+    "google-region": "europe-west4",
+    "google-zone": "europe-west4-b",
+    "google-machine-type": "n4a-highmem-1",
+    "google-image-id": "projects/ubuntu-os-cloud/global/images/ubuntu-example",
+    "google-subnet-cidr": "10.20.1.0/24",
+    "google-boot-disk-size-gb": 100,
+    "google-boot-disk-type": "hyperdisk-balanced",
+    "google-nic-type": "GVNIC",
+    "compute-ssh-sources": [
+      "0.0.0.0/0"
+    ],
+    "compute-http-sources": [
+      "0.0.0.0/0"
+    ]
+  },
+  "cases": [
+    {
+      "name": "valid v2",
+      "opts": {}
+    },
+    {
+      "name": "legacy api",
+      "opts": {
+        "compute-api-version": 1
+      }
+    },
+    {
+      "name": "local backend",
+      "opts": {
+        "provider-backend": "local"
+      }
+    },
+    {
+      "name": "external provider key",
+      "opts": {
+        "google-ssh-authorized-keys": "/tmp/external.pub"
+      }
+    },
+    {
+      "name": "external private key path",
+      "opts": {
+        "ssh-private-key-path": "/tmp/external-key"
+      }
+    },
+    {
+      "name": "missing SSH sources",
+      "opts": {
+        "compute-ssh-sources": []
+      }
+    },
+    {
+      "name": "missing HTTP sources",
+      "opts": {
+        "compute-http-sources": []
+      }
+    }
+  ],
+  "access": [
+    {
+      "ip": "203.0.113.10",
+      "user": "ubuntu",
+      "ssh-private-key-path": "/tmp/identity.pub",
+      "once/agent-socket": "/tmp/agent.sock"
+    },
+    {
+      "ip": "203.0.113.10",
+      "user": "root",
+      "ssh-private-key-path": "/tmp/identity.pub",
+      "once/agent-socket": "/tmp/agent.sock"
+    }
+  ],
+  "secrets": {
+    "provider-smtp": "resend",
+    "resend-password": "smtp-fixture",
+    "once-ssh-passphrase": "must-not-pass",
+    "r2-secret-access-key": "must-not-pass",
+    "app-password": "app-fixture",
+    "once": {
+      "applications": [
+        {
+          "env": {
+            "PASSWORD": "app-password",
+            "FORBIDDEN": "once-ssh-passphrase"
+          }
+        }
+      ]
+    }
+  },
+  "graphs": [
+    {
+      "event": "create",
+      "steps": [
+        "start",
+        "tofu-compute",
+        "tofu-smtp",
+        "tofu-dns",
+        "tofu-smtp-post",
+        "ansible-local",
+        "ansible-remote",
+        "github"
+      ]
+    },
+    {
+      "event": "build",
+      "steps": [
+        "start",
+        "tofu-compute",
+        "tofu-smtp",
+        "tofu-dns",
+        "tofu-smtp-post",
+        "ansible-local",
+        "ansible-remote",
+        "github"
+      ]
+    },
+    {
+      "event": "delete",
+      "steps": [
+        "start",
+        "github",
+        "ansible-cleanup",
+        "tofu-smtp-post",
+        "tofu-dns",
+        "tofu-smtp",
+        "tofu-compute",
+        "registration-delete"
+      ]
+    },
+    {
+      "event": "ssh",
+      "steps": [
+        "start",
+        "ssh"
+      ]
+    }
+  ],
+  "registration": [
+    {
+      "event": "create",
+      "guard": false
+    },
+    {
+      "event": "create",
+      "guard": true
+    },
+    {
+      "event": "delete",
+      "guard": false
+    }
+  ]
+}

@@ -12,6 +12,7 @@
    [green.workflow :as wf]
    [green.yaml :as yaml]
    [io.github.getcolors.once.machine :as machine]
+   [io.github.getcolors.once.access :as access]
    [io.github.getcolors.once.github :as github]
    [io.github.getcolors.once.utils :as utils]
    [io.github.getcolors.once.validate :as validate]))
@@ -276,7 +277,7 @@
                   :users []}))))
 
 (defn inventory
-  [{:keys [sudoer hosts users ssh-keygen ssh-private-key-path]}]
+  [{:keys [sudoer hosts users ssh-keygen ssh-private-key-path] :as opts}]
   (let [users (->> users
                    (filter (complement :remove))
                    (mapcat (fn [user]
@@ -299,7 +300,9 @@
                                                :ansible_user name}
                                         ssh-private-key-path
                                         (assoc :ansible_ssh_private_key_file
-                                               ssh-private-key-path))))
+                                               ssh-private-key-path
+                                               :ansible_ssh_common_args
+                                               (str "-F /dev/null -o IdentityFile=none -o IdentitiesOnly=yes -o IdentityAgent=" (or (:once/agent-socket opts) "none") " -o ForwardAgent=no -o ControlMaster=no -o ControlPersist=no -S none")))))
                              {}
                              admins)
         result {:all {:children {:admin {:hosts admins-hosts}
@@ -307,17 +310,16 @@
     (json/generate-string result {:pretty true})))
 
 (defn- par-lookup
-  "Jinja expression resolving a secret under the one parameter namespace every
-  colour shares. The expression is identical in all three packages, so their
-  rendered artifacts remain byte-compatible."
+  "Jinja expression resolving an explicitly selected runtime credential.
+  ONCE_PAR_* is the internal Ansible adapter, never a configuration input."
   [k]
   (let [suffix (-> (name k) (str/replace "-" "_") str/upper-case)]
-    (format "{{ lookup('env','COLORS_PAR_%s') }}" suffix)))
+    (format "{{ lookup('env','ONCE_PAR_%s') }}" suffix)))
 
 (defn- resolve-env
   "Resolve an application `:env` map of container variable name -> flat opts key
   into the [\"KEY=VALUE\"] list the once module expects. Each value defers to
-  the key's `COLORS_PAR_*` variable, looked up when Ansible runs, so application
+  the key's runtime `ONCE_PAR_*` variable, looked up when Ansible runs, so application
   secrets reach the host without being written into the rendered file. An unset
   variable still resolves to an empty value rather than the string \"null\".
   A list is passed through untouched."
@@ -403,6 +405,17 @@
      (raw-spec (str dir "/inventory.json") (inventory data))
      (raw-spec (str dir "/once.yml") (ansible-once data))]))
 
+(defn ansible-secret-env
+  "Forward only configured application values and the selected SMTP password."
+  ([opts]
+   (let [keys (cons (if (= "resend" (get opts :provider-smtp "resend")) :resend-password :no-infra-smtp-password)
+                    (mapcat (fn [{:keys [env]}] (when (map? env) (vals env))) (get-in opts [:once :applications])))]
+     (into {} (for [k (distinct (map keyword keys))
+                    :let [value (get opts k)]
+                    :when (and (some? value) (not= k :once-ssh-passphrase))]
+                [(str/replace (green-cli/par-name k) #"^COLORS_PAR_" "ONCE_PAR_") (str value)]))))
+  ([opts env] (ansible-secret-env (green-cli/read-pars opts env))))
+
 (defn ansible-remote-step
   [opts]
   (let [dir (tool-dir opts "ansible-remote")
@@ -413,6 +426,7 @@
       (ansible/ansible-step rendered {:dir dir
                                       :inventory "inventory.json"
                                       :playbooks {:create "main.yml"}
+                                      :env (ansible-secret-env opts)
                                       :host-key-checking false}))))
 
 (defn- local-host-alias

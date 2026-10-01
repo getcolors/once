@@ -9,9 +9,11 @@ from blue.cli import read_pars
 from package_once_blue.utils import apps_domains
 from package_once_blue.validate import state_errors
 from package_once_blue.workflow import once_workflow, start_step, wire_fn
+from package_once_blue import access
 
 valid = {
     "profile": "test",
+    "compute-api-version": 2,
     "workdir": ".once",
     "once": {"applications": [{"host": "www.example.com", "image": "example/app:latest"}]},
     "provider-compute": "digitalocean",
@@ -25,7 +27,6 @@ valid = {
     "digitalocean-region": "ams3",
     "digitalocean-size": "s-1vcpu-1gb",
     "digitalocean-image": "ubuntu",
-    "digitalocean-ssh-keys": "key-id",
 }
 
 
@@ -84,12 +85,12 @@ def test_ansible_rendering_defers_secrets_and_is_color_portable():
         }
     )
     assert "real-secret" not in rendered
-    assert "COLORS_PAR_APP_DATABASE_URL" in rendered
+    assert "ONCE_PAR_APP_DATABASE_URL" in rendered
 
 
 async def test_validation_and_lifecycle_safety():
     assert state_errors(valid) == []
-    assert (await start_step({**valid, "blue/event": "build"}, {}))["blue/exit"] == 0
+    assert (await access.scoped(lambda: start_step({**valid, "blue/event": "build"}, {})))["blue/exit"] == 0
     created = await start_step({**valid, "blue/event": "create"}, {})
     assert created["blue/exit"] == 2
     assert "COLORS_PAR_DO_TOKEN" in created["blue/err"]
@@ -115,9 +116,13 @@ async def test_dry_run_needs_no_credentials_and_touches_nothing(tmp_path):
 
 
 async def test_a_build_renders_the_complete_production_tree_without_tools(tmp_path):
-    result = await run(once_workflow, {**valid, "workdir": str(tmp_path), "blue/event": "build"})
+    result = await access.scoped(lambda: run(once_workflow, {**valid, "workdir": str(tmp_path), "blue/event": "build"}))
     assert result["blue/exit"] == 0
-    assert len([path for path in (tmp_path / "test").rglob("*") if path.is_file()]) == 23
+    assert len([path for path in (tmp_path / "build" / "test").rglob("*") if path.is_file()]) == 24
+    before = {str(path.relative_to(tmp_path)): path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
+    repeated = await access.scoped(lambda: run(once_workflow, {**valid, "workdir": str(tmp_path), "blue/event": "build"}))
+    assert repeated["blue/exit"] == 0
+    assert before == {str(path.relative_to(tmp_path)): path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
 
 
 async def test_describe_helpers_are_process_free_with_an_injected_runner():
@@ -147,22 +152,22 @@ def test_container_matching_prefers_the_once_label_host():
     assert _container_for_host(unlabelled, "www.example.com") is not None
     assert _container_for_host(unlabelled, "example.com") is None
 
-async def test_compute_refusal_prevents_application_resource_creation(monkeypatch):
+async def test_compute_refusal_prevents_application_resource_creation(monkeypatch, fake_access):
     from package_once_blue import machine, tools
     calls = []
 
     async def refuse(*_args):
-        return {'status': 'error', 'errors': ['legacy state requires migration']}
+        return {'status': 'error', 'error': {'message': 'node ownership refused'}}
 
     async def unexpected(_opts):
         calls.append('smtp')
         raise AssertionError('SMTP must not run after compute refusal')
 
-    monkeypatch.setattr(machine, 'orchestrate', refuse)
+    monkeypatch.setattr(machine, 'compute_node', refuse)
     monkeypatch.setattr(tools, 'tofu_smtp_step', unexpected)
     result = await run(once_workflow, {**valid, 'blue/event': 'create', 'do-token': 'fixture', 'resend-api-key': 'fixture', 'resend-password': 'fixture', 'cloudflare-api-token': 'fixture'})
     assert result['blue/exit'] == 1
-    assert result['blue/err'] == 'legacy state requires migration'
+    assert result['blue/err'] == 'node ownership refused'
     assert calls == []
 
 
@@ -171,15 +176,15 @@ async def test_recorded_inventory_supplies_application_and_ssh_parameters(monkey
     node = {'node_id': '0', 'provider': 'digitalocean', 'provider_id': '123', 'name': 'override', 'ip': '203.0.113.8', 'vpc_ip': None, 'user': 'root', 'sudoer': 'root'}
 
     async def read(*_args):
-        return {'status': 'present', 'cluster': {'nodes': [node]}, 'key': {'private_key_path': '/tmp/identity'}}
+        return {'status': 'ready', 'params': node}
 
-    monkeypatch.setattr(machine, 'read_deployment', read)
-    result = await machine.load(valid, {})
+    monkeypatch.setattr(machine, 'compute_node', read)
+    result = await machine.load({**valid, 'once/ssh-resource': machine.PLACEHOLDER, 'once/ssh-registration': {'status': 'ready'}, 'ssh-private-key-path': '/tmp/identity'}, {})
     assert result['once/compute-params']['ip'] == node['ip']
     assert result['profile'] == 'test'
     assert result['name'] == 'override'
     assert result['ssh-private-key-path'] == '/tmp/identity'
-    assert result['ssh-keygen'] is False
+    assert result['ssh-keygen'] is True
 
 
 def test_dmarc_settings_validate_explicit_policy_managed_providers_and_one_bare_report_address():

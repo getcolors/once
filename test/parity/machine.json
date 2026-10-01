@@ -1,85 +1,63 @@
 [
   {
-    "name": "managed recorded identity",
+    "name": "recorded identity with scoped public cache",
     "opts": {
       "profile": "deployment",
-      "provider-compute": "digitalocean"
+      "provider-compute": "google",
+      "ssh-private-key-path": "/tmp/public-identity.pub",
+      "once/agent-socket": "/tmp/agent.sock"
     },
     "result": {
-      "status": "present",
-      "cluster": {
-        "nodes": [
-          {
-            "node_id": "0",
-            "provider": "digitalocean",
-            "provider_id": "123",
-            "name": "cloud-label",
-            "ip": "203.0.113.8",
-            "vpc_ip": null,
-            "user": "root",
-            "sudoer": "root"
-          }
-        ]
-      },
-      "key": {
-        "private_key_path": "/tmp/deployment"
+      "status": "ready",
+      "params": {
+        "node_id": "once-compute",
+        "provider": "google",
+        "provider_id": "123",
+        "name": "cloud-label",
+        "ip": "203.0.113.8",
+        "vpc_ip": "10.20.1.2",
+        "user": "ubuntu",
+        "sudoer": "ubuntu"
       }
     }
   },
   {
-    "name": "external identity",
+    "name": "recorded identity before unlock",
     "opts": {
       "profile": "deployment",
-      "provider-compute": "digitalocean",
-      "digitalocean-ssh-keys": [
-        "existing-key"
-      ]
+      "provider-compute": "google"
     },
     "result": {
-      "status": "present",
-      "cluster": {
-        "nodes": [
-          {
-            "node_id": "0",
-            "provider": "digitalocean",
-            "provider_id": "123",
-            "name": "cloud-label",
-            "ip": "203.0.113.8",
-            "vpc_ip": null,
-            "user": "root",
-            "sudoer": "root"
-          }
-        ]
-      },
-      "key": {
-        "private_key_path": "/tmp/external"
+      "status": "ready",
+      "params": {
+        "node_id": "once-compute",
+        "provider": "google",
+        "provider_id": "123",
+        "name": "cloud-label",
+        "ip": "203.0.113.8",
+        "vpc_ip": "10.20.1.2",
+        "user": "ubuntu",
+        "sudoer": "ubuntu"
       }
     }
   },
   {
-    "name": "build identity",
+    "name": "reported name and sudoer retained",
     "opts": {
       "profile": "deployment",
-      "provider-compute": "digitalocean"
+      "provider-compute": "google"
     },
     "result": {
-      "status": "planned",
-      "cluster": {
-        "nodes": [
-          {
-            "node_id": "0",
-            "provider": "digitalocean",
-            "provider_id": "123",
-            "name": "cloud-label",
-            "ip": "203.0.113.8",
-            "vpc_ip": null,
-            "user": "root",
-            "sudoer": "root"
-          }
-        ]
-      },
-      "key": {
-        "private_key_path": "$HOME/.ssh/deployment"
+      "status": "ready",
+      "params": {
+        "node_id": "once-compute",
+        "provider": "google",
+        "provider_id": "123",
+        "name": "actual-vm",
+        "ip": "203.0.113.8",
+        "vpc_ip": "10.20.1.2",
+        "user": "ubuntu",
+        "sudoer": "admin"
       }
     }
   }

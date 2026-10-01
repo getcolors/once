@@ -1,12 +1,16 @@
+import * as access from "../src/access.ts";
 import {test,expect,spyOn} from 'bun:test';
 import {workflow,run} from 'red/workflow';
 import * as w from '../src/workflow.ts';
 import * as machine from '../src/machine.ts';
 import * as github from '../src/github.ts';
-const input={profile:'guard-test',workdir:'.once','provider-compute':'digitalocean','digitalocean-region':'ams3','digitalocean-size':'small','digitalocean-image':'ubuntu','digitalocean-ssh-keys':'external','provider-backend':'s3','s3-bucket':'states','s3-region':'eu-west-1','provider-dns':'cloudflare','provider-smtp':'resend','compute-ssh-sources':['0.0.0.0/0'],'compute-http-sources':['0.0.0.0/0'],once:{applications:[{host:'app.example.com',image:'example/app:latest'}]},'compute-require-existing-state':true};
+const input={'compute-api-version':2,profile:'guard-test',workdir:'.once','provider-compute':'digitalocean','digitalocean-region':'ams3','digitalocean-size':'small','digitalocean-image':'ubuntu','provider-backend':'s3','s3-bucket':'states','s3-region':'eu-west-1','provider-dns':'cloudflare','provider-smtp':'resend','compute-ssh-sources':['0.0.0.0/0'],'compute-http-sources':['0.0.0.0/0'],once:{applications:[{host:'app.example.com',image:'example/app:latest'}]},'compute-require-existing-state':true};
 const env={COLORS_PAR_DO_TOKEN:'fixture',COLORS_PAR_RESEND_API_KEY:'fixture',COLORS_PAR_RESEND_PASSWORD:'fixture',COLORS_PAR_CLOUDFLARE_API_TOKEN:'fixture'};
 for(const present of [false,true])test(`guarded start permits provider branches only with recorded ownership: ${present}`,async()=>{
  const calls:string[]=[];
+ const resource=spyOn(access,'resourceStep').mockImplementation(async o=>({...o,'once/ssh-resource':machine.placeholderResource}));
+ const registration=spyOn(access,'registrationStep').mockImplementation(async o=>o);
+ const agent=spyOn(access,'agentStep').mockImplementation(async o=>o);
  const load=spyOn(machine,'load').mockImplementation(async(o,e)=>{expect(e).toEqual(env);calls.push('read');return {...o,'red/exit':present?0:1};});
  const keys=spyOn(github,'generateKeys').mockImplementation(async()=>{calls.push('keys');return [[],undefined];});
  try{
@@ -14,25 +18,27 @@ for(const present of [false,true])test(`guarded start permits provider branches 
   const result=await run(wf,{...input,'red/event':'create'});
   expect(result['red/exit']).toBe(present?0:1);expect(calls.slice(0,2)).toEqual(present?['read','keys']:['read']);
   expect(calls.includes('once/tofu-smtp')).toBe(present);expect(calls.includes('once/tofu-compute')).toBe(present);
- }finally{load.mockRestore();keys.mockRestore();}
+ }finally{load.mockRestore();keys.mockRestore();resource.mockRestore();registration.mockRestore();agent.mockRestore();}
 });
 for(const [event,dry] of [['build',false],['create',true]] as const)test(`offline guarded ${event} does not read state`,async()=>{
  const load=spyOn(machine,'load').mockImplementation(async()=>{throw Error('offline state read');});
- try{expect((await w.startStep({...input,'red/event':event,'red/dry-run':dry},{}))['red/exit']).toBe(0);expect(load).not.toHaveBeenCalled();}finally{load.mockRestore();}
+ try{expect((await access.scoped(()=>w.startStep({...input,'red/event':event,'red/dry-run':dry},{})))['red/exit']).toBe(0);expect(load).not.toHaveBeenCalled();}finally{load.mockRestore();}
 });
 
 test('retired delete exits before provider or host cleanup and compute retires last',async()=>{
  const compute=await import('colors-compute-red');const calls:string[]=[];
- const read=spyOn(compute,'read_deployment').mockImplementation(async()=>{calls.push('read');return {status:'destroyed'};});
+ const resource=spyOn(access,'resourceStep').mockImplementation(async o=>({...o,'once/ssh-resource':machine.placeholderResource}));
+ const registration=spyOn(access,'registrationStep').mockImplementation(async o=>({...o,'once/ssh-registration':access.placeholderRegistration(o)}));
+ const read=spyOn(compute,'compute_node').mockImplementation(async()=>{calls.push('read');return {status:'destroyed',directory:'/tmp/unused'};});
  try{
   const opts:any={...input,'red/event':'delete','compute-prevent-destroy':false};delete opts['digitalocean-ssh-keys'];
   const wf=workflow({start:'once/start',wireFn:(step,o)=>{const edge=w.wireFn(step,o);if(!edge)return undefined;return [step==='once/start'?(values:any)=>w.startStep(values,env):async(values:any)=>{calls.push(step);return {...values,'red/exit':0};},...edge.slice(1)] as any;},nextFn:w.nextSteps});
-  const result=await run(wf,opts);expect(result['red/exit']).toBe(0);expect(calls).toEqual(['read']);
-  expect((await machine.load({...opts,'red/event':'create'},{}))['red/exit']).toBe(1);
+  const result=await run(wf,opts);expect(result['red/exit']).toBe(0);expect(calls).toEqual(['read','once/registration-delete']);
+  expect((await machine.load({...opts,'red/event':'create','once/ssh-resource':machine.placeholderResource},{}))['red/exit']).toBe(1);
   expect(w.nextSteps('once/start',['once/github'],{'red/exit':1})).toEqual([]);
   expect(w.wireFn('once/tofu-dns',opts)?.slice(1)).toEqual(['once/tofu-smtp']);
   expect(w.wireFn('once/tofu-smtp',opts)?.slice(1)).toEqual(['once/tofu-compute']);
- }finally{read.mockRestore();}
+ }finally{read.mockRestore();resource.mockRestore();registration.mockRestore();}
 });
 
 test('failed local cleanup never invokes remote cleanup',async()=>{

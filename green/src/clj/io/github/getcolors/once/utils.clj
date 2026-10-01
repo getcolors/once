@@ -60,7 +60,7 @@
      keypair living in ~/.ssh and would generate a second one beside a live
      deployment's state.
   14: colors-compute owns VM providers, remote compute state and SSH keys."
-  14)
+  15)
 
 (defn registrable-domain
   "The DNS zone `host` belongs to: its last two labels. Multi-label suffixes

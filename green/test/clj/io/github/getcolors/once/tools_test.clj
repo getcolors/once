@@ -46,7 +46,6 @@
               :provider-backend "s3" :s3-bucket "once-tests" :s3-region "eu-west-1"
               :compute-ssh-sources ["0.0.0.0/0"] :compute-http-sources ["0.0.0.0/0"]
               :compute-prevent-destroy true
-              :compute-pubkey "ssh-ed25519 AAAATEST operator"
               :yandex-cloud-id "cloud-id"
               :yandex-folder-id "folder-id"
               :yandex-zone "ru-central1-a"
@@ -61,12 +60,12 @@
               :yandex-token "a-real-yandex-token"}]
     (try
       (let [result (tools/tofu-compute-step opts)
-            main (str/join "\n" (map slurp (filter #(.isFile %) (file-seq (io/file (tools/tool-dir opts "tofu-compute"))))))]
+            main (str/join "\n" (map slurp (filter #(.isFile %) (file-seq (io/file (tools/tool-dir opts "once-compute"))))))]
         (is (zero? (:green/exit result)))
-        (is (= {:ip "192.0.2.10" :sudoer "ubuntu" :name "once-test" :user "ubuntu"}
+        (is (= {:ip "192.0.2.10" :sudoer "ubuntu" :name "test-once-compute" :user "ubuntu"}
                (select-keys (:once/compute-params result) [:ip :sudoer :name :user])))
         (is (str/includes? main "cloud-id"))
-        (is (str/includes? main "ssh-ed25519 PLACEHOLDER managed-by-colors"))
+        (is (str/includes? main "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"))
         (is (not (str/includes? main "a-real-yandex-token")))
         (is (str/includes? main "yandex_compute_image"))
         (is (str/includes? main "ignore_changes")))
@@ -82,7 +81,6 @@
               :provider-backend "s3" :s3-bucket "once-tests" :s3-region "eu-west-1"
               :compute-ssh-sources ["0.0.0.0/0"] :compute-http-sources ["0.0.0.0/0"]
               :compute-prevent-destroy true
-              :compute-pubkey "ssh-ed25519 AAAATEST operator"
               :yandex-cloud-id "cloud-id"
               :yandex-folder-id "folder-id"
               :yandex-zone "ru-central1-a"
@@ -98,7 +96,7 @@
               :yandex-allow-stopping-for-update true}]
     (try
       (let [result (tools/tofu-compute-step opts)
-            main (str/join "\n" (map slurp (filter #(.isFile %) (file-seq (io/file (tools/tool-dir opts "tofu-compute"))))))]
+            main (str/join "\n" (map slurp (filter #(.isFile %) (file-seq (io/file (tools/tool-dir opts "once-compute"))))))]
         (is (zero? (:green/exit result)))
         (is (str/includes? main "yandex_vpc_address"))
         (is (str/includes? main "ru-central1-a"))
@@ -116,7 +114,6 @@
               :provider-backend "s3" :s3-bucket "once-tests" :s3-region "eu-west-1"
               :compute-ssh-sources ["0.0.0.0/0"] :compute-http-sources ["0.0.0.0/0"]
               :compute-prevent-destroy true
-              :compute-pubkey "ssh-ed25519 AAAATEST operator"
               :yandex-cloud-id "cloud-id"
               :yandex-folder-id "folder-id"
               :yandex-zone "ru-central1-a"
@@ -131,7 +128,7 @@
               :yandex-disk-size-gb 20}]
     (try
       (let [result (tools/tofu-compute-step opts)
-            main (str/join "\n" (map slurp (filter #(.isFile %) (file-seq (io/file (tools/tool-dir opts "tofu-compute"))))))]
+            main (str/join "\n" (map slurp (filter #(.isFile %) (file-seq (io/file (tools/tool-dir opts "once-compute"))))))]
         (is (zero? (:green/exit result)))
         (is (str/includes? main "\"image_id\": \"fd8someimageid\""))
         (is (not (str/includes? main "yandex_compute_image")))
@@ -145,7 +142,7 @@
       (is (not (str/includes? yaml "re_a_real_secret")))
       (is (str/includes?
            yaml
-           "lookup('env','COLORS_PAR_RESEND_PASSWORD')"))
+           "lookup('env','ONCE_PAR_RESEND_PASSWORD')"))
       (testing "the non-secret fields still render as values"
         (is (str/includes? yaml "smtp_username: \"user\""))
         (is (str/includes? yaml "smtp_from: \"Info <info@notifications.example.com>\"")))))
@@ -164,7 +161,7 @@
       (is (not (str/includes? yaml "another_secret")))
       (is (str/includes?
            yaml
-           "lookup('env','COLORS_PAR_NO_INFRA_SMTP_PASSWORD')"))))
+           "lookup('env','ONCE_PAR_NO_INFRA_SMTP_PASSWORD')"))))
 
   (testing "an unset password stays absent, so the deploy flag is omitted"
     (let [yaml (tools/ansible-once (once-opts "resend" nil))]
@@ -183,10 +180,10 @@
     (is (not (str/includes? yaml "s3cret-key-base")))
     (is (str/includes?
          yaml
-         "lookup('env','COLORS_PAR_APP_DATABASE_URL')"))
+         "lookup('env','ONCE_PAR_APP_DATABASE_URL')"))
     (is (str/includes?
          yaml
-         "lookup('env','COLORS_PAR_APP_SECRET_KEY_BASE')"))
+         "lookup('env','ONCE_PAR_APP_SECRET_KEY_BASE')"))
 
     (testing "an :env list is passed through as written"
       (let [yaml (tools/ansible-once

@@ -1,178 +1,34 @@
-# Desired state for the ONCE stack. Non-secret values only.
-#
-# One file, read by whichever colour you run: green, red or blue all resolve it
-# by walking up from the working directory, and the work directory they share
-# is resolved next to this file.
-#
-# Secrets and tokens are never written here: export them as COLORS_PAR_* and
-# they are overlaid onto the matching flat key at run time. The variable name
-# is the key uppercased with hyphens as underscores, so do-token comes from
-# COLORS_PAR_DO_TOKEN. Any key below can be overridden the same way.
-#
-# Required per provider:
-#   azure          (none — OpenTofu uses the ambient Azure CLI session)
-#   aws            (none — OpenTofu uses the ambient AWS credential chain)
-#   google         (none — OpenTofu uses Application Default Credentials)
-#   digitalocean   COLORS_PAR_DO_TOKEN
-#   hcloud         COLORS_PAR_HCLOUD_TOKEN
-#   vultr          COLORS_PAR_VULTR_API_KEY
-#   yandex         COLORS_PAR_YANDEX_TOKEN
-#   oci            (none — uses oci-config-file-profile from ~/.oci/config)
-#   resend         COLORS_PAR_RESEND_API_KEY COLORS_PAR_RESEND_PASSWORD
-#   no-infra smtp  COLORS_PAR_NO_INFRA_SMTP_PASSWORD
-#   cloudflare     COLORS_PAR_CLOUDFLARE_API_TOKEN
-#   github         COLORS_PAR_GITHUB_TOKEN (only when an application names a repo)
-#   r2 backend     COLORS_PAR_R2_ACCESS_KEY_ID COLORS_PAR_R2_SECRET_ACCESS_KEY
-#   s3 backend     (none — OpenTofu uses the ambient AWS credential chain)
-# Plus one variable per application env entry, named after the key it maps to.
-profile: once-example
+# New ONCE v2 deployment. Existing deployments retain their pinned launchers.
+# Secrets are loaded from .envrc.private; Google uses Application Default Credentials.
+profile: once-google
 workdir: .colors
+compute-api-version: 2
 
-
-# Every application gets its own proxied A record; there is no implicit apex
-# or wildcard record. Hosts may span domains. Each distinct domain gets its
-# own DNS zone integration and Resend sending domain.
-#
-# env maps a container variable name to the flat key holding its value, so the
-# value arrives as COLORS_PAR_APP_EXAMPLE instead of living in this file.
-#
-# github is optional. Deploy keys are per repository, not per application: every
-# repository named here gets one keypair, generated fresh on every create and
-# never stored. The public half is installed on the server behind a ForceCommand
-# naming every host that repository serves, and the private half is published to
-# a GitHub Actions environment named after the profile, alongside the server
-# address, the deploy user, and the server's own SSH host key so CI can pin it.
-# Deploy keys are never written here.
-#
-# Two applications may name the same repository — one image answering for
-# several hosts. They share one key, and a ping from that repository's workflow
-# updates all of them.
 once:
   applications:
-    - host: www.example.com
-      image: ghcr.io/example/site:latest
-      github: example/site
-      env:
-        EXAMPLE: app-example
-    - host: www.example.net
-      image: ghcr.io/example/site:latest
-      github: example/site
+    - host: www.bigconfig.online
+      image: ghcr.io/pocketcontext/pocketcontext-website:latest
+      github: pocketcontext/pocketcontext-website
 
-provider-compute: digitalocean
+provider-compute: google
 provider-smtp: resend
 provider-dns: cloudflare
 provider-backend: r2
 compute-prevent-destroy: true
-compute-ssh-sources: ["REPLACE_ME"] # operator IPv4 CIDR
+compute-ssh-sources: ["0.0.0.0/0"]
 compute-http-sources: ["0.0.0.0/0"]
 
-azure-subscription-id: REPLACE_ME
-azure-location: swedencentral
-azure-resource-group: once
-azure-name: once
-azure-vm-size: Standard_D2pls_v6
-azure-image-publisher: Canonical
-azure-image-offer: ubuntu-24_04-lts
-azure-image-sku: server-arm64
-azure-image-version: REPLACE_ME
-azure-vnet-cidr: 10.10.0.0/16
-azure-subnet-cidr: 10.10.1.0/24
-azure-boot-disk-size-gb: 30
-azure-ssh-authorized-keys: ~/.ssh/id_ed25519.pub
-
-aws-region: eu-west-1
-aws-availability-zone: eu-west-1a
-aws-name: once
-aws-instance-type: t3.small
-aws-image-id: REPLACE_ME
-aws-vpc-cidr: 10.0.0.0/16
-aws-subnet-cidr: 10.0.1.0/24
-aws-root-volume-size-gb: 30
-aws-ssh-authorized-keys: ~/.ssh/id_ed25519.pub
-
-no-infra-smtp-server: smtp.resend.com
-no-infra-smtp-port: 587
-no-infra-smtp-username: resend
-
-s3-bucket: REPLACE_ME
-s3-region: REPLACE_ME
-r2-bucket: REPLACE_ME
-r2-endpoint: REPLACE_ME
-
-yandex-cloud-id: REPLACE_ME
-yandex-folder-id: REPLACE_ME
-yandex-zone: kz1-a
-yandex-image-family: ubuntu-2404-lts
-yandex-name: once
-yandex-subnet-cidr: 10.0.0.0/24
-yandex-platform-id: standard-v3
-yandex-cores: 2
-yandex-memory-gb: 2
-yandex-core-fraction: 100
-yandex-disk-size-gb: 20
-# Optional. A reserved address survives stop/start, where the ephemeral NAT
-# address Yandex hands out is released when the instance stops. Stopping for
-# update is off so an apply that Yandex cannot perform in place (cores,
-# memory, platform) fails instead of taking the instance down.
-yandex-static-ip: false
-yandex-allow-stopping-for-update: false
-# Optional. Pins the boot image. Left unset, the image resolves from
-# yandex-image-family and the resolved id is ignored on later applies, because
-# following a moving family would plan a replacement of the server.
-# yandex-image-id: fd8...
-
-oci-config-file-profile: REPLACE_ME
-oci-subnet-id: REPLACE_ME
-oci-compartment-id: REPLACE_ME
-oci-availability-domain: REPLACE_ME
-oci-display-name: once
-oci-shape: VM.Standard.A1.Flex
-# Optional. Pins the boot image. Left unset, the newest Canonical Ubuntu 24.04
-# image compatible with oci-shape is used — convenient for a first create, and
-# a moving target afterwards: the image id forces replacement, so an apply
-# months later can propose destroying the instance because Canonical published
-# a new one. Set it to the image you are actually running once the stack is
-# real. `tofu state show oci_core_instance.ampere_vm` reports it as source_id.
-# oci-image-id: ocid1.image.oc1...
-oci-ocpus: 1
-oci-memory-in-gbs: 4
-oci-boot-volume-size-in-gbs: 50
-oci-boot-volume-vpus-per-gb: 30
-oci-ssh-authorized-keys: REPLACE_ME
-
-hcloud-name: once
-hcloud-image: ubuntu-24.04
-hcloud-server-type: cx23
-hcloud-location: hel1
-hcloud-ssh-keys: REPLACE_ME
-
-vultr-name: once
-vultr-region: ams
-vultr-plan: vc2-1c-1gb
-# Vultr operating systems are numeric ids; 2284 is Ubuntu 24.04 LTS x64.
-vultr-os-id: 2284
-vultr-ssh-keys: REPLACE_ME
-
-google-project: REPLACE_ME
+google-project: pocketcontext
 google-region: europe-west4
 google-zone: europe-west4-b
-google-name: once
-google-machine-type: t2a-standard-1
+google-machine-type: n4a-highmem-1
+google-boot-disk-type: hyperdisk-balanced
+google-nic-type: GVNIC
 google-image-project: ubuntu-os-cloud
 google-image-family: ubuntu-2404-lts-arm64
-google-image-id: REPLACE_ME
+google-image-id: projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20260918
 google-subnet-cidr: 10.20.1.0/24
-google-boot-disk-size-gb: 30
-google-ssh-authorized-keys: ~/.ssh/id_ed25519.pub
+google-boot-disk-size-gb: 100
 
-digitalocean-name: once
-digitalocean-region: ams3
-digitalocean-size: s-1vcpu-1gb-35gb-intel
-digitalocean-image: ubuntu-25-10-x64
-digitalocean-vpc-uuid: REPLACE_ME
-digitalocean-ssh-keys: REPLACE_ME
-
-no-infra-compute-ip: REPLACE_ME
-no-infra-compute-user: REPLACE_ME
-no-infra-compute-sudoer: REPLACE_ME
-no-infra-compute-uid: REPLACE_ME
+r2-bucket: once-google-state
+r2-endpoint: https://319271fed8bc6d2d9059362be1165f37.eu.r2.cloudflarestorage.com

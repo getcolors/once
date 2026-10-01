@@ -11,7 +11,7 @@
    [clojure.string :as str]
    [green.cli :as green-cli]
    [green.process :as process]
-   [io.github.getcolors.once.ssh :as ssh]
+   [io.github.getcolors.once.access :as access]
    [io.github.getcolors.once.tools :as tools]))
 
 ;;; -------------------------------------------------------------- command helpers
@@ -54,7 +54,7 @@
        "-o" "BatchMode=yes"
        "-o" "ConnectTimeout=5"
        "-o" "StrictHostKeyChecking=accept-new"]
-      (into (ssh/identity-args compute))
+      (into (access/identity-args compute))
       (conj (str user "@" ip))))
 
 (defn- ssh-run
@@ -86,7 +86,7 @@
 (defn- compute-target
   [{:keys [provider-compute ip user sudoer no-infra-compute-ip
            no-infra-compute-user no-infra-compute-sudoer
-           ssh-keygen ssh-private-key-path]}]
+           ssh-keygen ssh-private-key-path] :as opts}]
   (let [ip (if (and (= provider-compute "no-infra")
                     (or (str/blank? ip) (= placeholder-ip ip))
                     (not (str/blank? no-infra-compute-ip)))
@@ -102,7 +102,8 @@
                              (not-empty no-infra-compute-sudoer)))
                        "root")}
       ssh-keygen (assoc :ssh-keygen ssh-keygen
-                        :ssh-private-key-path ssh-private-key-path))))
+                        :ssh-private-key-path ssh-private-key-path
+                        :once/agent-socket (:once/agent-socket opts)))))
 
 (defn- compute-status
   "Classify compute as :running, :unreachable, or :absent.
@@ -536,20 +537,23 @@
              :else {:green/exit 0}))))
 
 (defn describe-file
-  "Read a desired-state file, overlay `COLORS_PAR_*`, and describe the stack it
-  names. Describing reads OpenTofu state and the host rather than changing
-  either, so it runs outside the workflow and needs no validation gate."
+  "Inspect v2 ownership and describe through a temporary dedicated agent."
   [path]
-  (try
-    (let [file (io/file path)]
-      (if-not (.exists file)
-        {:green/exit 2 :green/err (str "desired state file not found: " file)}
-        (-> (green-cli/read-state file (slurp file))
-            (assoc :green/state-file (.getAbsolutePath file))
-            green-cli/read-pars
-            ;; Describe reads the live host, so it needs the keygen identity
-            ;; the way create does — real event semantics, opt-out untouched.
-            (ssh/with-machine-key true)
-            describe)))
-    (catch Throwable t
-      {:green/exit 2 :green/err (or (ex-message t) (str (class t)))})))
+  (access/scoped
+   (fn []
+    (try
+      (let [file (io/file path)]
+        (if-not (.exists file)
+          {:green/exit 2 :green/err (str "desired state file not found: " file)}
+          (let [opts (-> (green-cli/read-state file (slurp file))
+                         (assoc :green/state-file (.getAbsolutePath file) :green/event :describe)
+                         green-cli/read-pars)
+                errors (machine/errors opts)]
+            (if (seq errors) (assoc opts :green/exit 2 :green/err (str/join "\n" errors))
+              (do (access/lock! opts)
+                  (let [opts (access/resource-step opts)
+                        opts (if (:green/err opts) opts (access/registration-step opts))
+                        opts (if (:green/err opts) opts (machine/load-inventory opts))]
+                    (if (:green/err opts) opts (describe (access/agent-step opts)))))))))
+      (catch Throwable t
+        {:green/exit 2 :green/err (or (ex-message t) (str (class t)))})))))

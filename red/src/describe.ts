@@ -4,7 +4,8 @@ import { resolve } from "node:path";
 import { runtime, type ExecResult } from "red/runtime";
 import type { Opts } from "red/workflow";
 import { readPars } from "red/cli";
-import { identityArgs, withMachineKey } from "./ssh.ts";
+import * as access from "./access.ts";
+import { identityArgs } from "./access.ts";
 import { backendCredentialEnv, toolDir } from "./tools.ts";
 
 const runTimeoutMs = 30_000;
@@ -39,7 +40,7 @@ function sshTarget(params: Opts): { ip?: string; user: string } & Opts {
     ip,
     user: String(params.user || params.sudoer || params["no-infra-compute-user"] || params["no-infra-compute-sudoer"] || "root"),
     ...(params["ssh-keygen"]
-      ? { "ssh-keygen": params["ssh-keygen"], "ssh-private-key-path": params["ssh-private-key-path"] }
+      ? { "ssh-keygen": params["ssh-keygen"], "ssh-private-key-path": params["ssh-private-key-path"], "once/agent-socket": params["once/agent-socket"] }
       : {}),
   };
 }
@@ -188,10 +189,13 @@ export async function describeReport(input: Opts, runner: Runner = run, resolve 
   let detail: string | undefined;
   let computeDetail: string | undefined;
   if (resolve) {
-    const loaded = await machine.load(opts);
+    let loaded = await access.resourceStep(opts);
+    if (!loaded["red/exit"]) loaded = await access.registrationStep(loaded);
+    if (!loaded["red/exit"]) loaded = await access.connectionStep(loaded);
+    if (!loaded["red/exit"]) loaded = await access.agentStep(loaded);
     const compute = {params: loaded["once/compute-params"] as Record<string,unknown> ?? {}, detail: loaded["red/err"]};
     const smtp = await tofuOutputParams(runner, opts, "tofu-smtp");
-    opts = { ...opts, ip: undefined, ...compute.params, ...smtp.params };
+    opts = { ...loaded, ip: undefined, ...compute.params, ...smtp.params, "ssh-private-key-path": loaded["ssh-private-key-path"], "once/agent-socket": loaded["once/agent-socket"] };
     computeDetail = compute.detail;
     detail = [compute.detail, smtp.detail].filter(Boolean).join("; ") || undefined;
   }
@@ -239,10 +243,13 @@ export async function describeFile(path: string): Promise<Opts> {
     if (!existsSync(path)) return { "red/exit": 2, "red/err": `desired state file not found: ${path}` };
     // Describe reads the live host, so it needs the keygen identity the way
     // create does — real event semantics, opt-out untouched.
-    return describe(withMachineKey(readPars({
+    const opts = readPars({
       ...((Bun.YAML.parse(readFileSync(path, "utf8")) ?? {}) as Opts),
-      "red/state-file": resolve(path),
-    }), true));
+      "red/state-file": resolve(path), "red/event": "describe",
+    });
+    const errors = machine.errors(opts);
+    if (errors.length) return {...opts, "red/exit": 2, "red/err": errors.join("\n")};
+    return access.scoped(() => describe(opts));
   } catch (error) {
     return { "red/exit": 2, "red/err": error instanceof Error ? error.message : String(error) };
   }

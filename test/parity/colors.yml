@@ -3,6 +3,7 @@
 # so any drift between the colours shows up here first.
 profile: parity
 workdir: .colors
+compute-api-version: 2
 once:
   applications:
     - host: www.example.com
@@ -33,7 +34,6 @@ azure-image-version: 24.04.202608020
 azure-vnet-cidr: 10.10.0.0/16
 azure-subnet-cidr: 10.10.1.0/24
 azure-boot-disk-size-gb: 30
-azure-ssh-authorized-keys: /tmp/once.pub
 aws-region: eu-west-1
 aws-availability-zone: eu-west-1a
 aws-name: once
@@ -42,7 +42,6 @@ aws-image-id: ami-example
 aws-vpc-cidr: 10.0.0.0/16
 aws-subnet-cidr: 10.0.1.0/24
 aws-root-volume-size-gb: 30
-aws-ssh-authorized-keys: /tmp/once.pub
 google-project: once-example
 google-region: europe-west4
 google-zone: europe-west4-b
@@ -53,23 +52,18 @@ google-image-family: ubuntu-2404-lts-arm64
 google-image-id: projects/ubuntu-os-cloud/global/images/ubuntu-example
 google-subnet-cidr: 10.20.1.0/24
 google-boot-disk-size-gb: 30
-google-ssh-authorized-keys: /tmp/once.pub
 digitalocean-name: once
 digitalocean-region: ams3
 digitalocean-size: s-1vcpu-1gb-35gb-intel
 digitalocean-image: ubuntu-25-10-x64
-digitalocean-ssh-keys: key-id
 hcloud-name: once
 hcloud-image: ubuntu-24.04
 hcloud-server-type: cx23
 hcloud-location: hel1
-hcloud-ssh-keys: key-id
 vultr-name: once
 vultr-region: ams
 vultr-plan: vc2-1c-1gb
 vultr-os-id: 2284
-vultr-ssh-keys: key-id
-compute-pubkey: ssh-ed25519 AAAAEXAMPLE operator
 yandex-cloud-id: cloud
 yandex-folder-id: folder
 yandex-zone: kz1-a
@@ -95,7 +89,6 @@ oci-ocpus: 1
 oci-memory-in-gbs: 4
 oci-boot-volume-size-in-gbs: 50
 oci-boot-volume-vpus-per-gb: 30
-oci-ssh-authorized-keys: /tmp/once.pub
 no-infra-compute-ip: 203.0.113.10
 no-infra-compute-user: root
 no-infra-compute-sudoer: root

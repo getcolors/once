@@ -10,8 +10,9 @@ from blue.cli import stage_dir
 from blue.providers import tool_env
 from blue.scaffold import PRESERVE_JINJA_DELIMITERS, content_spec, scaffold
 
-from . import machine
+from . import machine, access
 from .github import public_keys
+from .compute import _s
 from .utils import apps_domains, registrable_domain
 from .validate import providers
 
@@ -219,7 +220,7 @@ def inventory(data: dict) -> str:
     user_hosts = {f"{user['name']}@{user['host']}": {"ansible_host": user["host"], "ansible_user": user["name"], "uid": user.get("uid")} for user in users}
     # In keygen mode nothing guarantees an agent holds the machine key, so the
     # inventory names it — a path, never key material.
-    key_file = {"ansible_ssh_private_key_file": data.get("ssh-private-key-path")} if data.get("ssh-private-key-path") else {}
+    key_file = {"ansible_ssh_private_key_file": data.get("ssh-private-key-path"), "ansible_ssh_common_args": "-F /dev/null -o IdentityFile=none -o IdentitiesOnly=yes -o IdentityAgent=" + (data.get("once/agent-socket") or "none") + " -o ForwardAgent=no -o ControlMaster=no -o ControlPersist=no -S none"} if data.get("ssh-private-key-path") else {}
     admin_hosts = {f"root@{host}": {"ansible_host": host, "ansible_user": data.get("sudoer") or "root", **key_file} for host in data.get("hosts", [])}
     return _pretty_json({"all": {"children": {"admin": {"hosts": admin_hosts}, "users": {"hosts": user_hosts}}}})
 
@@ -261,7 +262,7 @@ def _yaml(value: Any) -> str:
 
 def _par_lookup(key: str) -> str:
     suffix = key.upper().replace("-", "_")
-    return "{{ lookup('env','COLORS_PAR_" + suffix + "') }}"
+    return "{{ lookup('env','ONCE_PAR_" + suffix + "') }}"
 
 
 def _resolve_env(env: Any) -> Any:
@@ -317,12 +318,18 @@ def _remote_specs(opts: dict) -> list[dict]:
     ]
 
 
+
+def runtime_secret_env(opts):
+    keys = [{"resend": "resend-password", "no-infra": "no-infra-smtp-password"}.get(opts.get("provider-smtp") or "resend")]
+    keys += [str(key) for app in (opts.get("once") or {}).get("applications", []) if isinstance(app.get("env"), dict) for key in app["env"].values()]
+    return {"ONCE_PAR_" + key.upper().replace("-", "_"): _s(opts[key]) for key in keys if key and key != "once-ssh-passphrase" and opts.get(key) is not None}
+
 async def ansible_remote_step(opts: dict) -> dict:
     dir = tool_dir(opts, "ansible-remote")
     rendered = scaffold(opts, _remote_specs(opts))
     if opts.get("blue/event") in ("build", "delete"):
         return rendered
-    return await ansible_step(rendered, dir=dir, inventory="inventory.json", playbooks={"create": "main.yml"}, host_key_checking=False)
+    return await ansible_step(rendered, dir=dir, inventory="inventory.json", playbooks={"create": "main.yml"}, host_key_checking=False, env=runtime_secret_env(opts))
 
 
 async def ansible_local_step(opts: dict) -> dict:

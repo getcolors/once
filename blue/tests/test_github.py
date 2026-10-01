@@ -172,3 +172,53 @@ def test_a_host_key_becomes_a_known_hosts_line():
     )
     assert known_hosts_line("203.0.113.10", "") is None
     assert known_hosts_line("203.0.113.10", "No such file or directory") is None
+
+
+async def test_generated_private_keys_are_removed_when_scope_exits_before_publication():
+    from pathlib import Path
+    from package_once_blue import access, github
+    directory = None
+    async def keygen(args, **kwargs):
+        path = Path(args[-1])
+        path.write_text('temporary private key')
+        Path(str(path) + '.pub').write_text('ssh-ed25519 fixture')
+        return ExecResult(exit=0, out='', err='')
+    async def body():
+        nonlocal directory
+        keys, error = await github.generate_keys(opts, keygen)
+        assert error is None
+        directory = Path(keys[0]['private-file']).parent
+        assert directory.exists()
+        # Compute/SMTP failures return an error result before the GitHub step.
+        return {'blue/exit': 1, 'blue/err': 'compute failed'}
+    assert (await access.scoped(body))['blue/exit'] == 1
+    assert not directory.exists()
+
+
+async def test_partial_key_generation_failure_cleans_directory_without_scope():
+    from pathlib import Path
+    from package_once_blue import github
+    directory = None
+    async def keygen(args, **kwargs):
+        nonlocal directory
+        path = Path(args[-1])
+        directory = path.parent
+        path.write_text('partial private key')
+        return ExecResult(exit=1, out='', err='generation failed')
+    keys, error = await github.generate_keys(opts, keygen)
+    assert keys == [] and 'generation failed' in error
+    assert not directory.exists()
+
+
+async def test_key_generation_exception_cleans_directory_without_scope():
+    from pathlib import Path
+    import pytest
+    from package_once_blue import github
+    directory = None
+    async def keygen(args, **kwargs):
+        nonlocal directory
+        directory = Path(args[-1]).parent
+        raise RuntimeError('process failed')
+    with pytest.raises(RuntimeError, match='process failed'):
+        await github.generate_keys(opts, keygen)
+    assert not directory.exists()

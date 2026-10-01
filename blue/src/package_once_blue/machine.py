@@ -1,78 +1,139 @@
-"""ONCE's single host requirement and application parameter adapter."""
+"""ONCE owns one greenfield v2 node and its encrypted SSH authority."""
 import json
+import re
 from pathlib import Path
 from blue.cli import stage_dir
-from colors_compute import validate, backend_plan
-from colors_compute.deployment_request import source_cidrs
-from colors_compute.inspection import read_deployment
-from colors_compute.orchestration import orchestrate
-from colors_compute.planning import plan_deployment
-from colors_compute.ssh import _mode
+from colors_compute import node_plan, compute_node, registry, ssh_plan, resolve_connection
+from colors_compute.node import _directory, _write
 
-TOPOLOGY = [{'role': None, 'count': 1}]
+NODE_ID = 'once-compute'
+PLACEHOLDER = {'status': 'ready', 'reference': 'ssh-resource:build-placeholder',
+    'public_key': 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+    'fingerprint': 'SHA256:kmYcvdi2GkPeWxB6XLjrZB8JHsy2Hm8luHMFp9GMvqk'}
+API_ERROR = 'compute-api-version must be 2; existing deployments must retain their pinned launchers'
+
+
+def planning(opts):
+    return opts.get('blue/event') == 'build' or opts.get('blue/dry-run', False)
+
+
+def sdk_workdir(opts):
+    return str(Path(stage_dir(opts, NODE_ID)).resolve().parent.parent)
+
+
+def library_options(opts):
+    return {k: v for k, v in opts.items() if k not in ('ssh-private-key-path', 'ssh-public-key-path', 'once-ssh-passphrase') and '/' not in k}
+
+
+def resource(opts):
+    value = opts.get('once/ssh-resource') or (PLACEHOLDER if planning(opts) else None)
+    if value is None:
+        raise ValueError('SSH resource unavailable')
+    return value
+
+
+def registration(opts):
+    return bool(registry()['compute'].get(opts.get('provider-compute'), {}).get('registration'))
+
+
+def ssh_request(opts):
+    return {'name': 'machine-access', 'workdir': sdk_workdir(opts), 'passphrase_env': 'COLORS_PAR_ONCE_SSH_PASSPHRASE'}
+
+
+def registration_request(opts):
+    return {'name': 'machine-access', 'workdir': sdk_workdir(opts), 'state_filename': 'once-ssh-registration.tfstate', 'ssh_resource': resource(opts)}
 
 
 def requirements(opts):
     ingress = []
     for name, port in [('ssh', 22), ('http', 80), ('https', 443)]:
-        sources = source_cidrs(opts, 'ssh-sources' if name == 'ssh' else 'http-sources', 'compute-ssh-sources' if name == 'ssh' else 'compute-http-sources')
+        suffix = 'ssh-sources' if name == 'ssh' else 'http-sources'
+        sources = opts.get('compute-' + suffix, opts.get(str(opts.get('provider-compute')) + '-' + suffix))
+        if isinstance(sources, str):
+            sources = [s for s in re.split(r'[,\s]+', sources) if s]
         if not sources:
-            raise ValueError('compute-' + ('ssh' if name == 'ssh' else 'http') + '-sources is required')
+            raise ValueError('compute-' + suffix + ' is required')
         ingress.append({'id': name, 'protocol': 'tcp', 'from_port': port, 'to_port': port, 'sources': sources})
-    return {'single_host': True, 'private': False, 'security': {'ingress': ingress, 'egress': 'all', 'private_filter': False},
-            'legacy_state_keys': [str(opts.get('profile')) + '/tofu-compute.tfstate']}
+    return {'ingress': ingress, 'egress': 'all', 'private_filter': False}
 
 
-def errors(opts):
-    result = validate(opts)
-    if not result:
-        try:
-            plan_deployment(opts, TOPOLOGY, requirements(opts))
-        except ValueError as exc:
-            result.append(str(exc))
+def request(opts):
+    result = {'node_id': NODE_ID, 'state_filename': 'once-node-0.tfstate', 'workdir': sdk_workdir(opts), 'ssh_resource': resource(opts), 'security': requirements(opts)}
+    provider = opts.get('provider-compute')
+    if provider in ('hcloud', 'vultr', 'digitalocean'):
+        result['network'] = {'mode': 'none'}
+    if registration(opts):
+        result['ssh_registration'] = opts.get('once/ssh-registration') or ({'status': 'ready', 'reference': 'registration:build-placeholder', 'provider': provider, 'ssh_resource_reference': resource(opts)['reference'], 'fingerprint': resource(opts)['fingerprint'], 'id': '0'} if planning(opts) else None)
     return result
 
 
-def params(opts, result):
-    node = dict(result['cluster']['nodes'][0])
-    managed = _mode(opts)['mode'] == 'managed'
-    path = result.get('key', {}).get('private_key_path') or node.get('ssh_identity_file')
-    if path and result['status'] == 'planned':
-        path = path.replace('$HOME/.ssh', '/home/build-placeholder/.ssh')
-    return {**node, 'ssh-keygen': managed, **({'ssh-private-key-path': path} if path else {})}
+def errors(opts):
+    if type(opts.get('compute-api-version')) is not int or opts['compute-api-version'] != 2:
+        return [API_ERROR]
+    if opts.get('provider-backend') not in ('s3', 'r2'):
+        return ['compute state requires an s3 or r2 backend']
+    if any(key in opts for key in ('ssh-key-path', 'ssh-private-key-path', 'ssh-public-key-path')):
+        return ['external SSH keys are outside the single-node contract']
+    try:
+        planned = {**opts, 'blue/dry-run': True}
+        ssh_plan(library_options(planned), ssh_request(planned))
+        node_plan(library_options(planned), request(planned))
+        return []
+    except ValueError as exc:
+        return [str(exc)]
 
 
 def fallback_params(opts):
-    if opts.get('blue/event') != 'build' and not opts.get('blue/dry-run'):
+    if not planning(opts):
         raise ValueError('compute inventory unavailable')
-    return params(opts, plan_deployment(opts, TOPOLOGY, requirements(opts)))
+    user = registry()['compute'].get(opts.get('provider-compute'), {}).get('user', 'root')
+    return {'provider': opts.get('provider-compute'), 'node_id': NODE_ID, 'ip': '192.0.2.10', 'user': user, 'sudoer': user,
+            'name': str(opts.get('profile')) + '-once-compute', 'ssh-keygen': True, 'ssh-private-key-path': f'/home/build-placeholder/compute/{opts.get("profile")}/ssh/machine-access/identity.pub', 'once/agent-socket': '/home/build-placeholder/agent.sock'}
+
+
+def failure(opts, result):
+    error = result.get('error', {})
+    return {**opts, 'blue/exit': 1, 'blue/err': error.get('message', 'compute lifecycle refused') + ('\n' + error['stderr'] if error.get('stderr') else '')}
+
+
+def params(opts, result):
+    values = result['params']
+    return {**values, 'name': values.get('name') or str(opts.get('profile')) + '-once-compute', 'sudoer': values.get('sudoer') or values.get('user'), 'ssh-keygen': True, 'ssh-private-key-path': opts.get('ssh-private-key-path') or (f'/home/build-placeholder/compute/{opts.get("profile")}/ssh/machine-access/identity.pub' if planning(opts) else None), 'once/agent-socket': opts.get('once/agent-socket')}
+
+
+def adopt(opts, result):
+    values = params(opts, result)
+    return {**opts, **values, 'once/compute-params': values, 'colors-compute/node': result['params'], 'blue/exit': 0}
 
 
 async def step(opts):
-    planning = opts.get('blue/event') == 'build' or opts.get('blue/dry-run')
-    result = plan_deployment(opts, TOPOLOGY, requirements(opts)) if planning else await orchestrate(opts, TOPOLOGY, requirements(opts))
-    if result['status'] not in ('planned', 'ready', 'destroyed'):
-        return {**opts, 'blue/exit': 1, 'blue/err': '\n'.join(result.get('errors', [])) or 'compute lifecycle refused'}
-    if planning:
-        directory = Path(stage_dir(opts, 'tofu-compute'))
-        for stage, documents in [('shared', result['documents']['shared']), *[(f'nodes/{node}', docs) for node, docs in result['documents']['nodes'].items()]]:
-            state_key = result["state_keys"]["shared"] if stage == "shared" else result["state_keys"]["nodes"][stage.split("/")[1]]
-            documents = {**documents, "backend.tf.json": backend_plan(opts, state_key)["config"]}
-            for filename, document in documents.items():
-                target = directory / stage / filename
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(json.dumps(document, sort_keys=True, indent=2) + '\n')
-    if 'cluster' not in result:
+    if planning(opts):
+        canonicalize(node_plan(library_options(opts), request(opts)))
+        return {**opts, **fallback_params(opts), 'once/compute-params': fallback_params(opts), 'blue/exit': 0}
+    result = await compute_node(library_options(opts), request(opts), opts['blue/event'])
+    if result['status'] == 'ready':
+        return adopt(opts, result)
+    if result['status'] == 'destroyed':
         return {**opts, 'blue/exit': 0}
-    adopted = params(opts, result)
-    return {**opts, **adopted, 'once/compute-params': adopted, 'colors-compute/cluster': result['cluster'], 'blue/exit': 0}
+    return failure(opts, result)
 
 
 async def load(opts, env=None):
-    result = await read_deployment(opts, env)
+    result = await resolve_connection(library_options(opts), request(opts), env) if opts.get('blue/event') in ('ssh', 'describe') else await compute_node(library_options(opts), request(opts), 'inspect', env)
     if result['status'] == 'destroyed' and opts.get('blue/event') == 'delete':
         return {**opts, 'blue/exit': 0, 'colors-compute/already-destroyed': True}
-    if result['status'] != 'present':
-        return {**opts, 'blue/exit': 1, 'blue/err': 'compute inventory unavailable; legacy state requires explicit migration'}
-    adopted = params(opts, result)
-    return {**opts, **adopted, 'once/compute-params': adopted, 'colors-compute/cluster': result['cluster'], 'blue/exit': 0}
+    if result['status'] == 'destroyed':
+        return {**opts, 'blue/exit': 1, 'blue/err': 'compute node is destroyed'}
+    return adopt(opts, result) if result['status'] == 'ready' else failure(opts, result)
+
+
+async def connection(opts):
+    result = await resolve_connection(library_options(opts), request(opts))
+    return adopt(opts, result) if result['status'] == 'ready' else failure(opts, result)
+
+
+def canonicalize(plan):
+    _directory(plan['directory'])
+    for filename, document in plan['documents'].items():
+        _write(Path(plan['directory']) / filename, (json.dumps(document, sort_keys=True, indent=2) + '\n').encode())
+    return {**plan, 'status': 'built'}

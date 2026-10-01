@@ -10,7 +10,7 @@ from blue.workflow import advice_add, workflow, failed
 
 from blue.cli import read_pars
 
-from . import github, ssh, tools, machine
+from . import github, ssh, tools, machine, access
 from .validate import secret_errors, state_errors
 
 
@@ -47,12 +47,28 @@ async def _adopt_existing_state(opts: dict) -> dict:
 
 async def start_step(original: dict, env: dict[str, str] | None = None) -> dict:
     async def after(opts, _env, context):
-        if context['real'] and context['event'] == 'delete':
-            return await _adopt_existing_state(opts)
-        if context['real'] and context['event'] == 'create' and opts.get('compute-require-existing-state') is True:
-            opts = await machine.load(opts, _env)
-            if opts.get('blue/exit'):
+        context = {**context, 'real': not machine.planning(opts)}
+        if context['event'] == 'build':
+            opts = {**opts, 'workdir': str(opts['workdir']) + '/build'}
+        if not opts.get('blue/dry-run'):
+            access.lock(opts)
+        for step in ((access.resource_step,) if opts.get('blue/dry-run') else (access.resource_step, access.registration_step)):
+            opts = await step(opts)
+            if failed(opts):
                 return opts
+        if context['real'] and (context['event'] in ('delete', 'ssh') or opts.get('compute-require-existing-state') is True):
+            opts = await machine.load(opts, _env)
+            if failed(opts):
+                return opts
+            if opts.get('colors-compute/already-destroyed'):
+                return opts
+            if opts.get('once/registration-destroyed'):
+                return {**opts, 'blue/exit': 1, 'blue/err': 'SSH registration is destroyed while compute is still present'}
+            if context['event'] == 'delete':
+                smtp = await _state_output(opts, 'tofu-smtp')
+                opts = {**opts, **(smtp or {}), **({'once/smtp-params': smtp} if smtp else {})}
+        if context['event'] in ('create', 'build', 'ssh'):
+            opts = await access.agent_step(opts)
         return await _with_deploy_keys(opts, context['real'])
     return await preflight(
         original, defaults={"compute-prevent-destroy": True}, overlay=read_pars, env=env,
@@ -70,10 +86,12 @@ async def ansible_cleanup_step(opts: dict) -> dict:
 
 
 tofu_steps = ["once/tofu-compute", "once/tofu-smtp", "once/tofu-dns", "once/tofu-smtp-post"]
-side_effecting_steps = [*tofu_steps, "once/ansible-local", "once/ansible-remote", "once/ansible-cleanup", "once/github", "once/ssh-cleanup"]
+side_effecting_steps = [*tofu_steps, "once/ansible-local", "once/ansible-remote", "once/ansible-cleanup", "once/github", "once/ssh-cleanup", "once/registration-delete", "once/ssh"]
 
 
 def wire_fn(step: str, run_opts: dict):
+    if run_opts.get("blue/event") == "ssh":
+        return {"once/start": (start_step, "once/ssh"), "once/ssh": (access.ssh_step,)}.get(step)
     if run_opts.get("blue/event") == "delete":
         return {
             # Revoking runs before anything is destroyed: a withdrawn credential
@@ -89,7 +107,8 @@ def wire_fn(step: str, run_opts: dict):
             # The local keypair goes last, strictly after a successful compute
             # destroy: a failed delete leaves the key, which is still the only
             # credential to whatever survived.
-            "once/tofu-compute": (tools.tofu_compute_step,),
+            "once/tofu-compute": (tools.tofu_compute_step, "once/registration-delete"),
+            "once/registration-delete": (access.registration_delete,),
             "once/ssh-cleanup": (ssh.cleanup_step,),
         }.get(step)
     return {
@@ -114,8 +133,10 @@ def backend_advice(tool: str):
 
 
 def next_steps(step, successors, opts):
-    if failed(opts) or (step == "once/start" and opts.get("blue/event") == "delete" and opts.get("colors-compute/already-destroyed") is True):
+    if failed(opts):
         return []
+    if step == "once/start" and opts.get("blue/event") == "delete" and opts.get("colors-compute/already-destroyed") is True:
+        return [("once/registration-delete", opts)] if machine.registration(opts) and not opts.get("once/registration-destroyed") else []
     return [(successor, opts) for successor in (successors or [])]
 
 

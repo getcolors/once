@@ -167,7 +167,7 @@ ok "a re-pin lands in its own cache entry"
   XDG_CACHE_HOME="$cache" COLORS_PAR_WORKDIR="$tmp/out" \
     ./red build -f "$root/test/parity/colors.yml" >/dev/null) ||
   fail "a bootstrapped launcher could not run a build"
-[ -f "$tmp/out/parity/tofu-compute/nodes/0/node-none.tf.json" ] ||
+[ -f "$tmp/out/build/parity/once-compute/compute.tf.json" ] ||
   fail "the bootstrapped build rendered no compute stage"
 ok "a bootstrapped launcher renders a full work tree"
 
@@ -203,7 +203,7 @@ for attempt in 1 2; do
       ./red build -f "$root/test/parity/colors.yml" >"$tmp/red-cold/build.log" 2>&1); then cold_ok=1; break; fi
 done
 [ "$cold_ok" -eq 1 ] || { tail -5 "$tmp/red-cold/build.log" >&2; fail "the payload does not build from a cold cache"; }
-[ -f "$tmp/red-cold/out/parity/tofu-compute/nodes/0/node-none.tf.json" ] ||
+[ -f "$tmp/red-cold/out/build/parity/once-compute/compute.tf.json" ] ||
   fail "the cold-cache build rendered no compute stage"
 ok "the payload builds from a cold cache with only its PINS"
 

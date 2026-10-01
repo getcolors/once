@@ -32,7 +32,7 @@ import { join } from "node:path";
 import { runtime, type ExecResult } from "red/runtime";
 import type { Opts } from "red/workflow";
 import { runPlan } from "red/process";
-import { identityArgs } from "./ssh.ts";
+import { identityArgs, registerCleanup } from "./access.ts";
 import { deployGroups } from "./validate.ts";
 
 const runTimeoutMs = 30000;
@@ -87,11 +87,15 @@ export async function generateKeys(
   const groups = deployGroups(opts);
   if (!groups.length) return [[], undefined];
   const dir = mkdtempSync(join(tmpdir(), "once-deploy"));
+  const cleanup = () => rmSync(dir, {recursive:true, force:true});
   const keys: DeployKey[] = [];
+  try {
+  registerCleanup(cleanup);
   for (const [index, group] of groups.entries()) {
     const path = join(dir, `key-${index}`);
     const result = await runFn(keygenArgs(opts, group.github, path), {});
     if (result.exit !== 0) {
+      cleanup();
       return [[], `ssh-keygen failed for ${group.github}: ${String(result.err ?? "").trim()}`];
     }
     keys.push({
@@ -102,6 +106,7 @@ export async function generateKeys(
     });
   }
   return [keys, undefined];
+  } catch (error) { cleanup(); throw error; }
 }
 
 // The render-facing view: hosts and public key only. `tools` builds the

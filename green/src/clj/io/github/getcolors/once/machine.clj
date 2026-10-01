@@ -1,77 +1,114 @@
 (ns io.github.getcolors.once.machine
-  "ONCE's single host requirement and application parameter adapter."
-  (:require [cheshire.core :as json]
-            [clojure.java.io :as io]
-            [clojure.string :as str]
+  "ONCE's stable v2 singleton and application parameter adapter."
+  (:require [cheshire.core :as json] [clojure.java.io :as io] [clojure.string :as str]
             [green.cli :as cli]
             [io.github.getcolors.compute :as compute]
-            [io.github.getcolors.compute-deployment-request :as request]
-            [io.github.getcolors.compute-inspection :as inspection]
-            [io.github.getcolors.compute-orchestration :as orchestration]
-            [io.github.getcolors.compute-planning :as planning]
+            [io.github.getcolors.compute-node :as node]
+            [io.github.getcolors.compute-local :as local]
             [io.github.getcolors.compute-ssh :as ssh]))
-(def topology [{:role nil :count 1}])
+
+(def node-id "once-compute")
+(def state-filename "once-node-0.tfstate")
+(defn planning? [opts] (or (= :build (:green/event opts)) (:green/dry-run opts)))
+(defn sdk-workdir [opts]
+  (-> (cli/stage-dir opts node-id) io/file .getAbsoluteFile .getParentFile .getParentFile .getCanonicalPath))
+(defn library-options [opts]
+  (into {} (remove (fn [[key _]] (or (namespace key) (#{:ssh-private-key-path :ssh-public-key-path :once-ssh-passphrase} key))) opts)))
+(def placeholder-resource
+  {:status "ready" :reference "ssh-resource:build-placeholder"
+   :public_key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+   :fingerprint "SHA256:kmYcvdi2GkPeWxB6XLjrZB8JHsy2Hm8luHMFp9GMvqk"})
+(defn resource [opts]
+  (or (:once/ssh-resource opts) (when (planning? opts) placeholder-resource)
+      (throw (ex-info "SSH resource unavailable" {}))))
+(defn ssh-request [opts]
+  {:name "machine-access" :workdir (sdk-workdir opts) :passphrase_env "COLORS_PAR_ONCE_SSH_PASSPHRASE"})
+(defn registration? [opts]
+  (boolean (get-in compute/registry [:compute (keyword (:provider-compute opts)) :registration])))
+(defn registration-request [opts]
+  {:name "machine-access" :workdir (sdk-workdir opts)
+   :state_filename "once-ssh-registration.tfstate" :ssh_resource (resource opts)})
+(defn placeholder-registration [opts]
+  {:status "ready" :reference "registration:build-placeholder" :provider (:provider-compute opts)
+   :ssh_resource_reference (:reference (resource opts)) :fingerprint (:fingerprint (resource opts)) :id "0"})
 (defn requirements [opts]
-  {:single_host true :private false
-   :security {:egress "all" :private_filter false
-              :ingress (mapv (fn [[id port]]
-                               (let [suffix (if (= id "ssh") "ssh-sources" "http-sources")
-                                     sources (request/source-cidrs opts suffix (str "compute-" suffix))]
-                                 (when-not (seq sources) (throw (ex-info (str "compute-" suffix " is required") {})))
-                                 {:id id :protocol "tcp" :from_port port :to_port port :sources sources}))
-                             [["ssh" 22] ["http" 80] ["https" 443]])}
-   :legacy_state_keys [(str (:profile opts) "/tofu-compute.tfstate")]})
+  {:egress "all" :private_filter false
+   :ingress (mapv (fn [[id port]]
+                   (let [suffix (if (= id "ssh") "ssh-sources" "http-sources")
+                         sources (let [value (or (get opts (keyword (str "compute-" suffix))) (get opts (keyword (str (:provider-compute opts) "-" suffix))))]
+                                   (if (string? value) (vec (remove str/blank? (str/split value #"[,\s]+"))) value))]
+                     (when-not (seq sources) (throw (ex-info (str "compute-" suffix " is required") {})))
+                     {:id id :protocol "tcp" :from_port port :to_port port :sources sources}))
+                 [["ssh" 22] ["http" 80] ["https" 443]])})
+(defn request [opts]
+  (cond-> {:node_id node-id :state_filename state-filename :workdir (sdk-workdir opts)
+           :ssh_resource (resource opts) :security (requirements opts)}
+    (#{"hcloud" "vultr" "digitalocean"} (:provider-compute opts)) (assoc :network {:mode "none"})
+    (registration? opts) (assoc :ssh_registration (or (:once/ssh-registration opts)
+                                                     (when (planning? opts) (placeholder-registration opts))))))
 (defn errors [opts]
-  (let [errors (compute/validate opts)]
-    (if (seq errors) errors
-        (try (planning/plan-deployment opts topology (requirements opts)) []
-             (catch Exception error [(.getMessage error)])))))
+  (cond
+    (not= 2 (:compute-api-version opts)) ["compute-api-version must be 2; existing deployments must retain their pinned launchers"]
+    (not (#{"r2" "s3"} (:provider-backend opts))) ["compute state requires an s3 or r2 backend"]
+    (some #(contains? opts %) [:ssh-key-path :ssh-private-key-path :ssh-public-key-path])
+    ["external SSH keys are outside the single-node contract"]
+    :else (try
+            (let [opts (assoc opts :green/dry-run true)]
+              (ssh/ssh-plan (library-options opts) (ssh-request opts))
+              (node/node-plan (library-options opts) (request opts)))
+            [] (catch Exception e [(.getMessage e)]))))
+(defn placeholder-key [opts]
+  (str "/home/build-placeholder/compute/" (:profile opts) "/ssh/machine-access/identity.pub"))
 (defn params [opts result]
-  (let [node (first (get-in result [:cluster :nodes]))
-        path (or (get-in result [:key :private_key_path]) (:ssh_identity_file node))
-        path (if (and path (= "planned" (:status result)))
-               (str/replace path "$HOME/.ssh" "/home/build-placeholder/.ssh") path)]
-    (cond-> (assoc node :ssh-keygen (= "managed" (:mode (ssh/mode opts))))
-      path (assoc :ssh-private-key-path path))))
+  (let [data (:params result)]
+    (assoc data :name (or (:name data) (str (:profile opts) "-" node-id)) :sudoer (or (:sudoer data) (:user data)) :ssh-keygen true
+           :ssh-private-key-path (or (:ssh-private-key-path opts) (when (planning? opts) (placeholder-key opts)))
+           :once/agent-socket (:once/agent-socket opts))))
 (defn fallback-params [opts]
-  (when-not (or (= :build (:green/event opts)) (:green/dry-run opts))
-    (throw (ex-info "compute inventory unavailable" {})))
-  (params opts (planning/plan-deployment opts topology (requirements opts))))
+  (when-not (planning? opts) (throw (ex-info "compute inventory unavailable" {})))
+  (params opts {:params {:node_id node-id :provider (:provider-compute opts) :ip "192.0.2.10"
+                        :user (get-in compute/registry [:compute (keyword (:provider-compute opts)) :user])}}))
+(defn failed-result [opts result]
+  (assoc opts :green/exit 1 :green/err (or (get-in result [:error :message]) "compute lifecycle refused")))
+(defn adopt [opts result]
+  (let [data (params opts result)]
+    (assoc (merge opts data) :once/compute-params data :colors-compute/node (:params result) :green/exit 0)))
 (defn- compute-json [value indent]
   (let [padding #(apply str (repeat % " "))]
     (cond
       (map? value) (if (empty? value) "{}"
-                      (str "{\n" (str/join ",\n" (for [[key item] (sort-by (comp name key) value)]
+                      (str "{\n" (str/join ",\n" (for [[key item] (sort-by (fn [[key _]] (if (keyword? key) (subs (str key) 1) (str key))) value)]
                                                        (str (padding (+ indent 2)) (json/generate-string key) ": " (compute-json item (+ indent 2)))))
                            "\n" (padding indent) "}"))
       (sequential? value) (if (empty? value) "[]"
                               (str "[\n" (str/join ",\n" (map #(str (padding (+ indent 2)) (compute-json % (+ indent 2))) value)) "\n" (padding indent) "]"))
       :else (json/generate-string value))))
+(defn canonical-build! [opts result]
+  (local/private-owned-directory! (sdk-workdir opts) (local/path (:directory result)))
+  (doseq [[filename document] (:documents result)]
+    (let [target (str (io/file (:directory result) filename))]
+      (local/prepare! target)
+      (local/write-atomic! target (str (compute-json document 0) "\n"))))
+  (assoc result :status "built"))
 (defn step [opts]
-  (let [planning? (or (= :build (:green/event opts)) (:green/dry-run opts))
-        result (if planning? (planning/plan-deployment opts topology (requirements opts))
-                   (orchestration/orchestrate opts topology (requirements opts)))]
-    (when planning?
-      (doseq [[stage documents] (cons ["shared" (get-in result [:documents :shared])]
-                                      (map (fn [[id documents]] [(str "nodes/" id) documents]) (get-in result [:documents :nodes])))
-              :let [state-key (if (= stage "shared") (get-in result [:state_keys :shared]) (get-in result [:state_keys :nodes (last (str/split stage #"/"))]))]
-              [filename document] (assoc documents "backend.tf.json" (:config (compute/backend-plan opts state-key)))]
-        (let [target (io/file (cli/stage-dir opts "tofu-compute") stage filename)]
-          (io/make-parents target) (spit target (str (compute-json document 0) "\n")))))
-    (cond
-      (not (contains? #{"planned" "ready" "destroyed"} (:status result)))
-      (assoc opts :green/exit 1 :green/err (if (seq (:errors result)) (str/join "\n" (:errors result)) "compute lifecycle refused"))
-      (:cluster result) (let [adopted (params opts result)]
-                          (assoc (merge opts adopted) :once/compute-params adopted :colors-compute/cluster (:cluster result) :green/exit 0))
-      :else (assoc opts :green/exit 0))))
+  (let [result (if (planning? opts)
+                 (canonical-build! opts (node/node-plan (library-options opts) (request opts)))
+                 (node/compute-node! (library-options opts) (request opts)
+                                     (if (= :delete (:green/event opts)) "delete" "create")))]
+    (case (:status result)
+      "built" (let [data (fallback-params opts)] (assoc (merge opts data) :once/compute-params data :green/exit 0))
+      "ready" (adopt opts result)
+      "destroyed" (assoc opts :green/exit 0)
+      (failed-result opts result))))
 (defn load-inventory
-  ([opts] (load-inventory opts (into {} (System/getenv))))
+  ([opts] (load-inventory opts (System/getenv)))
   ([opts env]
-   (let [result (inspection/read-deployment opts env)]
-     (cond
-       (and (= "destroyed" (:status result)) (= :delete (:green/event opts)))
-       (assoc opts :green/exit 0 :colors-compute/already-destroyed true)
-       (= "present" (:status result))
-       (let [adopted (params opts result)]
-         (assoc (merge opts adopted) :once/compute-params adopted :colors-compute/cluster (:cluster result) :green/exit 0))
-       :else (assoc opts :green/exit 1 :green/err "compute inventory unavailable; legacy state requires explicit migration")))))
+   (let [result (if (#{:describe :ssh} (:green/event opts))
+                  (node/resolve-connection! (library-options opts) (request opts) env)
+                  (node/compute-node! (library-options opts) (request opts) "inspect" env))]
+     (case (:status result)
+       "ready" (adopt opts result)
+       "destroyed" (if (= :delete (:green/event opts))
+                     (assoc opts :green/exit 0 :colors-compute/already-destroyed true)
+                     (assoc opts :green/exit 1 :green/err "compute node is destroyed"))
+       (failed-result opts result)))))

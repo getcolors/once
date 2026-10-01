@@ -1,3 +1,4 @@
+import { identityArgs } from "./access.ts";
 import * as machine from "./machine.ts";
 import { ansibleStep, ansibleWithSpec } from "red/ansible";
 import { contentSpec, PRESERVE_JINJA_DELIMITERS, scaffold, type RenderOpts, type Spec, type Template } from "red/scaffold";
@@ -250,6 +251,7 @@ export function inventory(data: any): string {
     ansible_host: host,
     ansible_user: data.sudoer ?? "root",
     ...(data["ssh-private-key-path"] ? { ansible_ssh_private_key_file: data["ssh-private-key-path"] } : {}),
+    ansible_ssh_common_args: [...identityArgs(data).slice(0,4), ...identityArgs(data).slice(6)].join(" "),
   }]));
   return prettyJson({ all: { children: { admin: { hosts: adminsHosts }, users: { hosts: usersHosts } } } });
 }
@@ -282,7 +284,7 @@ function yamlLines(value: any, indent = 0): string[] {
 function yaml(value: any): string { return `${yamlLines(value).join("\n")}\n`; }
 function parLookup(key: string): string {
   const suffix = key.toUpperCase().replaceAll("-", "_");
-  return `{{ lookup('env','COLORS_PAR_${suffix}') }}`;
+  return `{{ lookup('env','ONCE_PAR_${suffix}') }}`;
 }
 
 function resolveEnv(env: any): any {
@@ -341,11 +343,16 @@ function ansibleRemoteSpecs(opts: Opts): Spec[] {
   ];
 }
 
+export function ansibleEnvironment(opts: Opts): Record<string,string> {
+  const keys = [(opts['provider-smtp'] ?? 'resend') === 'resend' ? 'resend-password' : 'no-infra-smtp-password', ...((opts.once as any)?.applications ?? []).flatMap((app:any)=> app.env && !Array.isArray(app.env) ? Object.values(app.env) : [])];
+  return Object.fromEntries([...new Set(keys)].filter(key=>key !== 'once-ssh-passphrase' && opts[String(key)] != null).map(key=>['ONCE_PAR_'+String(key).toUpperCase().replaceAll('-','_'),String(opts[String(key)])]));
+}
+
 export async function ansibleRemoteStep(opts: Opts): Promise<Opts> {
   const dir = toolDir(opts, "ansible-remote");
   const rendered = scaffold(opts, ansibleRemoteSpecs(opts));
   if (["build", "delete"].includes(String(opts["red/event"]))) return rendered;
-  return ansibleStep(rendered, { dir, inventory: "inventory.json", playbooks: { create: "main.yml" }, hostKeyChecking: false });
+  return ansibleStep(rendered, { dir, inventory: "inventory.json", playbooks: { create: "main.yml" }, hostKeyChecking: false, env: ansibleEnvironment(opts) });
 }
 
 function localHostAlias(data: Opts): string {

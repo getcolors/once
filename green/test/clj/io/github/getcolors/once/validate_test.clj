@@ -5,7 +5,7 @@
    [io.github.getcolors.once.validate :as sut]))
 
 (def ^:private valid
-  {:profile "test"
+  {:compute-api-version 2 :profile "test"
    :workdir ".green"
    :once {:applications [{:host "www.example.com"
                           :image "ghcr.io/example/site:latest"}]}

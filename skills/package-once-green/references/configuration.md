@@ -18,6 +18,7 @@ not a `colors.yml` setting.
 ```yaml
 profile: production
 workdir: .colors
+compute-api-version: 2
 provider-compute: digitalocean
 provider-backend: r2
 provider-smtp: resend
@@ -45,25 +46,32 @@ selected provider's legacy `*-ssh-sources` and `*-http-sources` keys. An absent
 source list is an error. Only providers supporting the requested firewall and
 network capabilities can run the configuration.
 
-The machine name defaults to `profile`; an optional provider-scoped name
-changes the cloud label. SSH aliases and key ownership remain profile-based.
-Leave the provider's public-key reference absent to let the library manage
-`~/.ssh/<profile>`. A present reference selects external ownership. Blank
-references are errors. For external SSH, use an agent or an explicit
-`ssh-private-key-path`. Private key content is never configuration.
+This implementation is only for fresh v2 deployments. Existing deployments
+retain their older pinned launchers; there is no migration or adoption path.
+The cloud name is `<profile>-once-compute`; the operator alias is `<profile>`.
+External SSH key references and private key paths are not v2 configuration.
+
+The named SSH resource `machine-access` stores encrypted authority under
+`<profile>/ssh/machine-access/resource.json`. Set
+`COLORS_PAR_ONCE_SSH_PASSPHRASE` to a strong stable value and back it up before
+create. A temporary scoped agent unlocks the key without persisting decrypted
+material. Use `./COLOR ssh`, replacing COLOR with your selected launcher.
+Delete retains this authority after destroying compute and registration.
 
 Compute supports R2 and S3 remote state. S3 needs `s3-bucket` and `s3-region`
 and uses the ambient AWS credential chain. R2 needs `r2-bucket`, `r2-endpoint`,
 `COLORS_PAR_R2_ACCESS_KEY_ID` and `COLORS_PAR_R2_SECRET_ACCESS_KEY`.
 `provider-compute: no-infra` and local compute state are unsupported.
 
-Compute state keys are `<profile>/compute/shared.tfstate` and
-`<profile>/compute/nodes/0.tfstate`. The library coordinates ownership in
-`<profile>/compute/coordination.json`. Existing `<profile>/tofu-compute.tfstate`
-requires a reviewed state migration before create. The library refuses to
-adopt or overwrite it automatically. Back up state and review resource address
-transfers and plans before a live migration. An empty build is not migration
-proof. SMTP and DNS retain `<profile>/<tool>.tfstate`.
+Compute state is `<profile>/once-node-0.tfstate`; separately required public-key
+registrations use `<profile>/once-ssh-registration.tfstate`. SMTP and DNS retain
+`<profile>/<tool>.tfstate`. Builds are isolated under `.colors/build/<profile>/`.
+Set `compute-require-existing-state: true` after provisioning to refuse an
+accidental create against missing ownership; it does not transfer state.
+
+For Google N4A, use `google-machine-type: n4a-highmem-1`,
+`google-boot-disk-type: hyperdisk-balanced`, `google-nic-type: GVNIC`, and a
+pinned compatible Ubuntu ARM64 image. Google authentication uses ADC.
 
 Yandex reserves a public address by default. Explicit `yandex-static-ip: false`
 selects a dynamic address; true retains the reservation.
@@ -108,14 +116,16 @@ deployment causes OpenTofu to destroy its record on the next apply.
 Applications derive DNS zones and Resend domains from their hostnames. Only
 listed hosts receive A records. Application `env` maps container variable names
 to flat parameter keys, whose values arrive through `COLORS_PAR_*`.
-Never put the values in YAML.
+Never put the values in YAML. ONCE forwards only these application bindings and
+the selected SMTP password to Ansible as `ONCE_PAR_*` runtime variables.
 
 Application `github` is optional `owner/repo`. Each named repository gets one
 fresh deploy key during create, restricted to its listed hosts. ONCE publishes
 the private key and server connection facts to an Actions environment named
 after the profile. It retains one previous authorized generation for recovery
 from a failed publication. These operations need `COLORS_PAR_GITHUB_TOKEN`,
-including delete, which withdraws the credentials. With no repository named,
+including delete, which withdraws the credentials. An authenticated GitHub CLI
+can supply it at runtime with `export COLORS_PAR_GITHUB_TOKEN="$(gh auth token)"`. With no repository named,
 no GitHub token is required. See [github-deploy.md](github-deploy.md) for the
 application workflow consuming those values.
 

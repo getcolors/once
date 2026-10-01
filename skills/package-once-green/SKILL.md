@@ -18,7 +18,8 @@ and preserving a DNS record when removing management. Review any inherited
 policy before setting an explicit sending-domain policy.
 
 The package calls colors-compute for one host. The library owns provider
-selection, credentials, remote state and SSH key lifecycle. Update its dependency
+selection, credentials, node state and encrypted SSH resources. ONCE owns
+the workflow scope and agent lifetime. Update its dependency
 to obtain provider support; do not add a compute template or provider branch to
 this package. ONCE owns application configuration, SMTP, DNS and GitHub publishing.
 
@@ -48,14 +49,18 @@ the task applies; do not ask again. Create validates, converges compute, then
 SMTP, DNS, verification and application configuration. Compute ownership failure
 stops subsequent resource creation. Delete loads recorded compute inventory,
 withdraws published credentials and SSH configuration, removes DNS and SMTP,
-then destroys compute. The library removes its SSH key after successful destroy.
+then destroys compute and any provider registration. Encrypted SSH authority
+is retained after compute deletion.
 Keep `compute-prevent-destroy: true` in desired state; an authorized delete can
 use `COLORS_PAR_COMPUTE_PREVENT_DESTROY=false` for that invocation.
 
-Existing monolithic compute state requires an explicit reviewed migration. Do
-not run a new create against it to discover what happens. Missing, unreadable or
-inconsistent state is a refusal, not permission to recreate resources. A failed
-operation retains state needed for inspection and retry.
+This is a breaking, greenfield-only v2 implementation. Require
+`compute-api-version: 2`, fresh identities and fresh state roots. Existing
+deployments keep their pinned launchers and remain untouched. Do not add
+migration, adoption or compatibility tooling. Supply and securely back up
+`COLORS_PAR_ONCE_SSH_PASSPHRASE`. Never replace it to regenerate authority.
+Use the launcher's `ssh` command for a scoped agent; a bare alias is insufficient.
+Build renders separately under `.colors/build/<profile>/`.
 
 Use `./green describe` for recorded compute status and application inspection.
 It reads compute through the library and requires a verified address before SSH.
