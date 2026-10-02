@@ -320,3 +320,14 @@ The remote play waits for SSH, then explicitly gathers the platform facts
 needed to validate Linux, CPU architecture, and the service manager before
 installing ONCE. Automatic gathering stays disabled so it cannot precede SSH
 readiness.
+
+### Compute command failures
+
+Compute failures report the lifecycle stage, safe command prefix, resolved
+executable and exit status when available, plus sanitized stderr. Missing
+executables, process launch failures and timeouts have distinct explanations;
+an unknown or older diagnostic keeps its authored message. For `ssh`, failures
+before connecting begin with `Cannot prepare SSH access`. If `tofu` is missing,
+make OpenTofu available on `PATH` and retry. From this repository, use
+`devenv shell -- green/green ssh`. Standalone launchers need OpenTofu on
+their calling shell's `PATH`.

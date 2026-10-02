@@ -32,7 +32,7 @@ wheels = [
 [[package]]
 name = "colors-compute-blue"
 version = "0.1.0"
-source = { git = "https://github.com/getcolors/colors-compute.git?subdirectory=blue&rev=59acb202029ea1061c2c68d0a6ad2bb509eccad4#59acb202029ea1061c2c68d0a6ad2bb509eccad4" }
+source = { git = "https://github.com/getcolors/colors-compute.git?subdirectory=blue&rev=0ad66afc13afca18e1fc66c048f174e20d379804#0ad66afc13afca18e1fc66c048f174e20d379804" }
 
 [[package]]
 name = "iniconfig"
@@ -69,7 +69,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "blue", git = "https://github.com/getcolors/blue.git?rev=784018bb586882efbd91affd42139582a40ea1d1" },
-    { name = "colors-compute-blue", git = "https://github.com/getcolors/colors-compute.git?subdirectory=blue&rev=59acb202029ea1061c2c68d0a6ad2bb509eccad4" },
+    { name = "colors-compute-blue", git = "https://github.com/getcolors/colors-compute.git?subdirectory=blue&rev=0ad66afc13afca18e1fc66c048f174e20d379804" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
 ]

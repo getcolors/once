@@ -107,3 +107,14 @@ record. To stop management while preserving the record, back up state, remove
 its resource address from DNS state with `tofu state rm`, and remove both
 options before the next convergence. Removing the policy alone from a managed
 deployment causes OpenTofu to destroy its record on the next apply.
+
+### Compute command failures
+
+Compute failures report the lifecycle stage, safe command prefix, resolved
+executable and exit status when available, plus sanitized stderr. Missing
+executables, process launch failures and timeouts have distinct explanations;
+an unknown or older diagnostic keeps its authored message. For `ssh`, failures
+before connecting begin with `Cannot prepare SSH access`. If `tofu` is missing,
+make OpenTofu available on `PATH` and retry. From this repository, use
+`devenv shell -- blue/blue ssh`. Standalone launchers need OpenTofu on
+their calling shell's `PATH`.

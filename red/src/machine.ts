@@ -20,7 +20,24 @@ export function request(opts:Opts):any {const provider=String(opts['provider-com
 export function errors(opts:Opts):string[]{if(opts['compute-api-version']!==2)return ['compute-api-version must be 2; existing deployments must retain their pinned launchers'];if(!['r2','s3'].includes(String(opts['provider-backend'])))return ['compute state requires an s3 or r2 backend'];if(['ssh-key-path','ssh-private-key-path','ssh-public-key-path'].some(key=>Object.hasOwn(opts,key)))return ['external SSH keys are outside the single-node contract'];try{const p={...opts,'red/dry-run':true};ssh_plan(libraryOptions(p),sshRequest(p));node_plan(libraryOptions(p),request(p));return [];}catch(e){return [(e as Error).message];}}
 export function params(opts:Opts,result:any):Opts {const node=result.params;return {...node,name:node.name??`${opts.profile}-${nodeId}`,sudoer:node.sudoer??node.user,'ssh-keygen':true,'ssh-private-key-path':opts['ssh-private-key-path']??(planning(opts)?placeholderKey(opts):null),'once/agent-socket':opts['once/agent-socket']??null};}
 export function fallbackParams(opts:Opts):Opts {if(!planning(opts))throw Error('compute inventory unavailable');return {node_id:nodeId,provider:opts['provider-compute'],name:`${opts.profile}-${nodeId}`,ip:'192.0.2.10',user:(registry.compute as any)[String(opts['provider-compute'])]?.user??'root',sudoer:(registry.compute as any)[String(opts['provider-compute'])]?.user??'root','ssh-keygen':true,'ssh-private-key-path':placeholderKey(opts),'once/agent-socket':'/home/build-placeholder/agent.sock'};}
-export function failedResult(opts:Opts,result:any):Opts{return {...opts,'red/exit':1,'red/err':(result.error?.message??'compute lifecycle refused')+(result.error?.stderr?'\n'+result.error.stderr:'')};}
+export function failureMessage(opts:Opts,result:any):string {
+  // colors-compute supplies an authored command prefix and sanitized stderr.
+  // Never print raw argv, environment, stdout or the whole error object.
+  const error=result.error??{}, tool=error.command?.[0];
+  const detail=error.command_reason==='executable_not_found'?(tool?`Executable "${tool}" was not found on PATH.`:'Required executable was not found on PATH.'):
+    error.command_reason==='process_start_failed'?'Required command could not start.':
+    error.command_reason==='timeout'?'Required command timed out.':error.message??'compute lifecycle refused';
+  const lines=[(opts['red/event']==='ssh'?'Cannot prepare SSH access: ':'')+detail];
+  if(error.stage)lines.push('Compute stage: '+error.stage);
+  if(error.command?.length)lines.push('Command: '+error.command.join(' '));
+  if(error.executable)lines.push('Executable: '+error.executable);
+  if(error.exit_code!=null)lines.push('Exit status: '+(error.exit_code<0?'unavailable':error.exit_code));
+  if(error.stderr)lines.push(error.stderr);
+  if(error.command_reason==='executable_not_found')lines.push(tool==='tofu'?'Make OpenTofu (tofu) available on PATH and retry.':tool?`Make ${tool} available on PATH and retry.`:'Make the required executable available on PATH and retry.');
+  return lines.join('\n');
+}
+export function failedResult(opts:Opts,result:any):Opts{return {...opts,'red/exit':1,'red/err':failureMessage(opts,result)};}
+
 function sorted(value:any):any{return Array.isArray(value)?value.map(sorted):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(k=>[k,sorted(value[k])])):value;}
 export function writeBuild(plan:any):void {
   const directory=resolve(plan.directory);

@@ -70,3 +70,14 @@ the target repository matches `owner/repo`; the deployment repository may be a
 different checkout. Follow the linked reference for the exact published values.
 
 Create and build serialize the package-owned SSH alias stage before remote Ansible. A failed local ownership check stops application convergence; GitHub publication remains after remote convergence.
+
+### Compute command failures
+
+Compute failures report the lifecycle stage, safe command prefix, resolved
+executable and exit status when available, plus sanitized stderr. Missing
+executables, process launch failures and timeouts have distinct explanations;
+an unknown or older diagnostic keeps its authored message. For `ssh`, failures
+before connecting begin with `Cannot prepare SSH access`. If `tofu` is missing,
+make OpenTofu available on `PATH` and retry. From this repository, use
+`devenv shell -- green/green ssh`. Standalone launchers need OpenTofu on
+their calling shell's `PATH`.

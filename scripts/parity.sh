@@ -212,3 +212,6 @@ assert result['registration_operations']==['create','inspect','inspect'], 'guard
 assert result['secret_env']=={'ONCE_PAR_APP_PASSWORD':'app-fixture','ONCE_PAR_RESEND_PASSWORD':'smtp-fixture'}, 'runtime credential isolation failed'
 print('v2 failure cleanup, ownership preflight and credential isolation meet the expected contract')
 PYTHON
+
+# Command failures must remain clear even though they never render artifacts.
+bash "$root/scripts/diagnostics-parity.sh"

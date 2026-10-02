@@ -1,0 +1,151 @@
+[
+  {
+    "name": "missing-tofu",
+    "event": "ssh",
+    "result": {
+      "status": "error",
+      "error": {
+        "code": "command_failed",
+        "message": "Required command failed.",
+        "stage": "init",
+        "command": [
+          "tofu",
+          "init"
+        ],
+        "exit_code": -1,
+        "command_reason": "executable_not_found"
+      }
+    },
+    "expected": "Cannot prepare SSH access: Executable \"tofu\" was not found on PATH.\nCompute stage: init\nCommand: tofu init\nExit status: unavailable\nMake OpenTofu (tofu) available on PATH and retry."
+  },
+  {
+    "name": "timeout",
+    "event": "ssh",
+    "result": {
+      "status": "error",
+      "error": {
+        "message": "Required command failed.",
+        "stage": "state",
+        "command": [
+          "tofu",
+          "state",
+          "pull"
+        ],
+        "executable": "/usr/bin/tofu",
+        "exit_code": -1,
+        "command_reason": "timeout"
+      }
+    },
+    "expected": "Cannot prepare SSH access: Required command timed out.\nCompute stage: state\nCommand: tofu state pull\nExecutable: /usr/bin/tofu\nExit status: unavailable"
+  },
+  {
+    "name": "launch-failure",
+    "event": "ssh",
+    "result": {
+      "status": "error",
+      "error": {
+        "message": "Required command failed.",
+        "command": [
+          "tofu",
+          "init"
+        ],
+        "command_reason": "process_start_failed"
+      }
+    },
+    "expected": "Cannot prepare SSH access: Required command could not start.\nCommand: tofu init"
+  },
+  {
+    "name": "tool-stderr",
+    "event": "create",
+    "result": {
+      "status": "error",
+      "error": {
+        "message": "Required command failed.",
+        "stage": "init",
+        "command": [
+          "tofu",
+          "init"
+        ],
+        "exit_code": 1,
+        "stderr": "Backend refused access.\ntoken=[REDACTED]",
+        "stdout": "NEVER PRINT",
+        "environment": {
+          "TOKEN": "NEVER PRINT"
+        },
+        "argv": [
+          "NEVER PRINT"
+        ]
+      }
+    },
+    "expected": "Required command failed.\nCompute stage: init\nCommand: tofu init\nExit status: 1\nBackend refused access.\ntoken=[REDACTED]"
+  },
+  {
+    "name": "legacy-negative-exit",
+    "event": "ssh",
+    "result": {
+      "status": "error",
+      "error": {
+        "message": "Required command failed.",
+        "exit_code": -1
+      }
+    },
+    "expected": "Cannot prepare SSH access: Required command failed.\nExit status: unavailable"
+  },
+  {
+    "name": "future-reason",
+    "event": "ssh",
+    "result": {
+      "status": "error",
+      "error": {
+        "code": "future_code",
+        "command_reason": "future_reason",
+        "message": "A future authored error."
+      }
+    },
+    "expected": "Cannot prepare SSH access: A future authored error."
+  },
+  {
+    "name": "empty",
+    "event": "delete",
+    "result": {
+      "status": "error",
+      "error": {}
+    },
+    "expected": "compute lifecycle refused"
+  },
+  {
+    "name": "missing-other-tool",
+    "event": "ssh",
+    "result": {
+      "status": "error",
+      "error": {
+        "command": [
+          "ssh-keygen"
+        ],
+        "command_reason": "executable_not_found"
+      }
+    },
+    "expected": "Cannot prepare SSH access: Executable \"ssh-keygen\" was not found on PATH.\nCommand: ssh-keygen\nMake ssh-keygen available on PATH and retry."
+  },
+  {
+    "name": "missing-unknown-tool",
+    "event": "ssh",
+    "result": {
+      "error": {
+        "command_reason": "executable_not_found",
+        "command": []
+      }
+    },
+    "expected": "Cannot prepare SSH access: Required executable was not found on PATH.\nMake the required executable available on PATH and retry."
+  },
+  {
+    "name": "empty-message",
+    "event": "create",
+    "result": {
+      "error": {
+        "message": ""
+      }
+    },
+    "expected": ""
+  }
+]

@@ -68,8 +68,28 @@
   (when-not (planning? opts) (throw (ex-info "compute inventory unavailable" {})))
   (params opts {:params {:node_id node-id :provider (:provider-compute opts) :ip "192.0.2.10"
                         :user (get-in compute/registry [:compute (keyword (:provider-compute opts)) :user])}}))
+(defn failure-message [opts result]
+  ;; colors-compute supplies an authored command prefix and sanitized stderr.
+  ;; Never print raw argv, environment, stdout or the whole error object.
+  (let [{:keys [message stage command executable exit_code stderr command_reason]} (:error result)
+        tool (first command)
+        detail (case command_reason
+                 "executable_not_found" (if tool (str "Executable \"" tool "\" was not found on PATH.") "Required executable was not found on PATH.")
+                 "process_start_failed" "Required command could not start."
+                 "timeout" "Required command timed out."
+                 (or message "compute lifecycle refused"))]
+    (str/join "\n"
+              (cond-> [(str (when (= :ssh (:green/event opts)) "Cannot prepare SSH access: ") detail)]
+                (seq stage) (conj (str "Compute stage: " stage))
+                (seq command) (conj (str "Command: " (str/join " " command)))
+                (seq executable) (conj (str "Executable: " executable))
+                (some? exit_code) (conj (str "Exit status: " (if (neg? exit_code) "unavailable" exit_code)))
+                (seq stderr) (conj stderr)
+                (= command_reason "executable_not_found")
+                (conj (if (= tool "tofu") "Make OpenTofu (tofu) available on PATH and retry."
+                          (if tool (str "Make " tool " available on PATH and retry.") "Make the required executable available on PATH and retry.")))))))
 (defn failed-result [opts result]
-  (assoc opts :green/exit 1 :green/err (or (get-in result [:error :message]) "compute lifecycle refused")))
+  (assoc opts :green/exit 1 :green/err (failure-message opts result)))
 (defn adopt [opts result]
   (let [data (params opts result)]
     (assoc (merge opts data) :once/compute-params data :colors-compute/node (:params result) :green/exit 0)))

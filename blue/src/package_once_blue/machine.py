@@ -91,9 +91,35 @@ def fallback_params(opts):
             'name': str(opts.get('profile')) + '-once-compute', 'ssh-keygen': True, 'ssh-private-key-path': f'/home/build-placeholder/compute/{opts.get("profile")}/ssh/machine-access/identity.pub', 'once/agent-socket': '/home/build-placeholder/agent.sock'}
 
 
+def failure_message(opts, result):
+    # colors-compute supplies an authored command prefix and sanitized stderr.
+    # Never print raw argv, environment, stdout or the whole error object.
+    error = result.get('error') or {}
+    command = error.get('command') or []
+    tool = command[0] if command else None
+    reason = error.get('command_reason')
+    detail = ((f'Executable "{tool}" was not found on PATH.' if tool else 'Required executable was not found on PATH.') if reason == 'executable_not_found' else
+              'Required command could not start.' if reason == 'process_start_failed' else
+              'Required command timed out.' if reason == 'timeout' else
+              error['message'] if error.get('message') is not None else 'compute lifecycle refused')
+    lines = [('Cannot prepare SSH access: ' if opts.get('blue/event') == 'ssh' else '') + detail]
+    if error.get('stage'):
+        lines.append('Compute stage: ' + error['stage'])
+    if command:
+        lines.append('Command: ' + ' '.join(command))
+    if error.get('executable'):
+        lines.append('Executable: ' + error['executable'])
+    if error.get('exit_code') is not None:
+        lines.append('Exit status: ' + ('unavailable' if error['exit_code'] < 0 else str(error['exit_code'])))
+    if error.get('stderr'):
+        lines.append(error['stderr'])
+    if reason == 'executable_not_found':
+        lines.append('Make OpenTofu (tofu) available on PATH and retry.' if tool == 'tofu' else f'Make {tool} available on PATH and retry.' if tool else 'Make the required executable available on PATH and retry.')
+    return '\n'.join(lines)
+
+
 def failure(opts, result):
-    error = result.get('error', {})
-    return {**opts, 'blue/exit': 1, 'blue/err': error.get('message', 'compute lifecycle refused') + ('\n' + error['stderr'] if error.get('stderr') else '')}
+    return {**opts, 'blue/exit': 1, 'blue/err': failure_message(opts, result)}
 
 
 def params(opts, result):
