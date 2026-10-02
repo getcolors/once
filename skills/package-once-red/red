@@ -14,8 +14,8 @@ import { homedir } from "node:os";
 // directory, which would halt Bun's upward resolution of `package-once-red` and
 // break the development symlink at red/red.
 const PINS = {
-  "colors-compute-red": "github:getcolors/colors-compute#59acb202029ea1061c2c68d0a6ad2bb509eccad4",
-  "package-once-red": "github:getcolors/once#63b0dd15a801e1e28625b77e9da48f4220c8fb9f",
+  "colors-compute-red": "github:getcolors/colors-compute#0ad66afc13afca18e1fc66c048f174e20d379804",
+  "package-once-red": "github:getcolors/once#e81a18bd94c329624de74ef96eb05ba980f7a029",
   // The Red SDK is a peer of colors-compute-red, not a dependency: a cold
   // cache installs nothing for a peer, so the consumer pins it explicitly, at
   // the commit red/package.json pins. scripts/launcher.sh checks they agree.

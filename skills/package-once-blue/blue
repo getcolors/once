@@ -4,9 +4,9 @@
 # dependencies = ["package-once-blue", "blue", "colors-compute-blue"]
 #
 # [tool.uv.sources]
-# package-once-blue = { git = "https://github.com/getcolors/once.git", rev = "63b0dd15a801e1e28625b77e9da48f4220c8fb9f", subdirectory = "blue" }
+# package-once-blue = { git = "https://github.com/getcolors/once.git", rev = "e81a18bd94c329624de74ef96eb05ba980f7a029", subdirectory = "blue" }
 # blue = { git = "https://github.com/getcolors/blue.git", rev = "784018bb586882efbd91affd42139582a40ea1d1" }
-# colors-compute-blue = { git = "https://github.com/getcolors/colors-compute.git", rev = "59acb202029ea1061c2c68d0a6ad2bb509eccad4", subdirectory = "blue" }
+# colors-compute-blue = { git = "https://github.com/getcolors/colors-compute.git", rev = "0ad66afc13afca18e1fc66c048f174e20d379804", subdirectory = "blue" }
 # ///
 """Thin launcher for package-once-blue."""
 from package_once_blue import exec, run
