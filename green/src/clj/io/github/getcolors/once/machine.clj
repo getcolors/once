@@ -71,20 +71,24 @@
 (defn failure-message [opts result]
   ;; colors-compute supplies an authored command prefix and sanitized stderr.
   ;; Never print raw argv, environment, stdout or the whole error object.
-  (let [{:keys [message stage command executable exit_code stderr command_reason]} (:error result)
+  (let [{:keys [message stage command executable exit_code stderr command_reason auth_reason]} (:error result)
         tool (first command)
-        detail (case command_reason
-                 "executable_not_found" (if tool (str "Executable \"" tool "\" was not found on PATH.") "Required executable was not found on PATH.")
-                 "process_start_failed" "Required command could not start."
-                 "timeout" "Required command timed out."
-                 (or message "compute lifecycle refused"))]
+        reauth? (= auth_reason "google_reauth_required")
+        detail (if reauth? "Google Cloud credentials require reauthentication (invalid_rapt)."
+                 (case command_reason
+                   "executable_not_found" (if tool (str "Executable \"" tool "\" was not found on PATH.") "Required executable was not found on PATH.")
+                   "process_start_failed" "Required command could not start."
+                   "timeout" "Required command timed out."
+                   (or message "compute lifecycle refused")))]
     (str/join "\n"
               (cond-> [(str (when (= :ssh (:green/event opts)) "Cannot prepare SSH access: ") detail)]
                 (seq stage) (conj (str "Compute stage: " stage))
                 (seq command) (conj (str "Command: " (str/join " " command)))
                 (seq executable) (conj (str "Executable: " executable))
                 (some? exit_code) (conj (str "Exit status: " (if (neg? exit_code) "unavailable" exit_code)))
-                (seq stderr) (conj stderr)
+                (seq stderr) (conj (if (= stderr "[structured output suppressed]") "Command details were withheld because structured output may contain credentials or state." stderr))
+                reauth? (conj "If using local user Application Default Credentials, run `gcloud auth application-default login`, then retry the original command. Otherwise renew the configured Google credentials through their authentication method.")
+                (and (not reauth?) (= stderr "[structured output suppressed]")) (conj "The underlying cause could not be safely identified from this diagnostic.")
                 (= command_reason "executable_not_found")
                 (conj (if (= tool "tofu") "Make OpenTofu (tofu) available on PATH and retry."
                           (if tool (str "Make " tool " available on PATH and retry.") "Make the required executable available on PATH and retry.")))))))

@@ -24,7 +24,8 @@ export function failureMessage(opts:Opts,result:any):string {
   // colors-compute supplies an authored command prefix and sanitized stderr.
   // Never print raw argv, environment, stdout or the whole error object.
   const error=result.error??{}, tool=error.command?.[0];
-  const detail=error.command_reason==='executable_not_found'?(tool?`Executable "${tool}" was not found on PATH.`:'Required executable was not found on PATH.'):
+  const reauth=error.auth_reason==='google_reauth_required';
+  const detail=reauth?'Google Cloud credentials require reauthentication (invalid_rapt).':error.command_reason==='executable_not_found'?(tool?`Executable "${tool}" was not found on PATH.`:'Required executable was not found on PATH.'):
     error.command_reason==='process_start_failed'?'Required command could not start.':
     error.command_reason==='timeout'?'Required command timed out.':error.message??'compute lifecycle refused';
   const lines=[(opts['red/event']==='ssh'?'Cannot prepare SSH access: ':'')+detail];
@@ -32,7 +33,9 @@ export function failureMessage(opts:Opts,result:any):string {
   if(error.command?.length)lines.push('Command: '+error.command.join(' '));
   if(error.executable)lines.push('Executable: '+error.executable);
   if(error.exit_code!=null)lines.push('Exit status: '+(error.exit_code<0?'unavailable':error.exit_code));
-  if(error.stderr)lines.push(error.stderr);
+  if(error.stderr)lines.push(error.stderr==='[structured output suppressed]'?'Command details were withheld because structured output may contain credentials or state.':error.stderr);
+  if(reauth)lines.push('If using local user Application Default Credentials, run `gcloud auth application-default login`, then retry the original command. Otherwise renew the configured Google credentials through their authentication method.');
+  else if(error.stderr==='[structured output suppressed]')lines.push('The underlying cause could not be safely identified from this diagnostic.');
   if(error.command_reason==='executable_not_found')lines.push(tool==='tofu'?'Make OpenTofu (tofu) available on PATH and retry.':tool?`Make ${tool} available on PATH and retry.`:'Make the required executable available on PATH and retry.');
   return lines.join('\n');
 }

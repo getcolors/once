@@ -81,3 +81,11 @@ before connecting begin with `Cannot prepare SSH access`. If `tofu` is missing,
 make OpenTofu available on `PATH` and retry. From this repository, use
 `devenv shell -- green/green ssh`. Standalone launchers need OpenTofu on
 their calling shell's `PATH`.
+
+When the compute library identifies Google `invalid_rapt` reauthentication,
+the error names it and explains how to renew local user Application Default
+Credentials with `gcloud auth application-default login`, or renew the configured
+credentials through their own authentication method. ONCE does not launch login
+or retry operations automatically. Structured output stays suppressed to protect
+credentials and state; without a recognized diagnosis, the message explicitly
+says the underlying cause could not be safely identified.

@@ -147,5 +147,98 @@
       }
     },
     "expected": ""
+  },
+  {
+    "name": "google-reauth-ssh",
+    "event": "ssh",
+    "result": {
+      "status": "error",
+      "error": {
+        "message": "Required command failed.",
+        "stage": "plan",
+        "command": [
+          "tofu",
+          "plan"
+        ],
+        "exit_code": 1,
+        "auth_reason": "google_reauth_required",
+        "stderr": "[structured output suppressed]"
+      }
+    },
+    "expected": "Cannot prepare SSH access: Google Cloud credentials require reauthentication (invalid_rapt).\nCompute stage: plan\nCommand: tofu plan\nExit status: 1\nCommand details were withheld because structured output may contain credentials or state.\nIf using local user Application Default Credentials, run `gcloud auth application-default login`, then retry the original command. Otherwise renew the configured Google credentials through their authentication method."
+  },
+  {
+    "name": "google-reauth-create",
+    "event": "create",
+    "result": {
+      "status": "error",
+      "error": {
+        "message": "Required command failed.",
+        "stage": "plan",
+        "command": [
+          "tofu",
+          "plan"
+        ],
+        "exit_code": 1,
+        "auth_reason": "google_reauth_required"
+      }
+    },
+    "expected": "Google Cloud credentials require reauthentication (invalid_rapt).\nCompute stage: plan\nCommand: tofu plan\nExit status: 1\nIf using local user Application Default Credentials, run `gcloud auth application-default login`, then retry the original command. Otherwise renew the configured Google credentials through their authentication method."
+  },
+  {
+    "name": "google-reauth-describe",
+    "event": "describe",
+    "result": {
+      "status": "error",
+      "error": {
+        "message": "Required command failed.",
+        "stage": "plan",
+        "command": [
+          "tofu",
+          "plan"
+        ],
+        "exit_code": 1,
+        "auth_reason": "google_reauth_required",
+        "stderr": "Sanitized OAuth error."
+      }
+    },
+    "expected": "Google Cloud credentials require reauthentication (invalid_rapt).\nCompute stage: plan\nCommand: tofu plan\nExit status: 1\nSanitized OAuth error.\nIf using local user Application Default Credentials, run `gcloud auth application-default login`, then retry the original command. Otherwise renew the configured Google credentials through their authentication method."
+  },
+  {
+    "name": "suppressed-unknown-cause",
+    "event": "ssh",
+    "result": {
+      "status": "error",
+      "error": {
+        "message": "Required command failed.",
+        "stage": "plan",
+        "command": [
+          "tofu",
+          "plan"
+        ],
+        "exit_code": 1,
+        "stderr": "[structured output suppressed]"
+      }
+    },
+    "expected": "Cannot prepare SSH access: Required command failed.\nCompute stage: plan\nCommand: tofu plan\nExit status: 1\nCommand details were withheld because structured output may contain credentials or state.\nThe underlying cause could not be safely identified from this diagnostic."
+  },
+  {
+    "name": "unknown-auth-reason",
+    "event": "ssh",
+    "result": {
+      "status": "error",
+      "error": {
+        "message": "Required command failed.",
+        "stage": "plan",
+        "command": [
+          "tofu",
+          "plan"
+        ],
+        "exit_code": 1,
+        "auth_reason": "future_auth_reason",
+        "stderr": "[structured output suppressed]"
+      }
+    },
+    "expected": "Cannot prepare SSH access: Required command failed.\nCompute stage: plan\nCommand: tofu plan\nExit status: 1\nCommand details were withheld because structured output may contain credentials or state.\nThe underlying cause could not be safely identified from this diagnostic."
   }
 ]

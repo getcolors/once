@@ -102,6 +102,9 @@ def failure_message(opts, result):
               'Required command could not start.' if reason == 'process_start_failed' else
               'Required command timed out.' if reason == 'timeout' else
               error['message'] if error.get('message') is not None else 'compute lifecycle refused')
+    reauth = error.get('auth_reason') == 'google_reauth_required'
+    if reauth:
+        detail = 'Google Cloud credentials require reauthentication (invalid_rapt).'
     lines = [('Cannot prepare SSH access: ' if opts.get('blue/event') == 'ssh' else '') + detail]
     if error.get('stage'):
         lines.append('Compute stage: ' + error['stage'])
@@ -112,7 +115,11 @@ def failure_message(opts, result):
     if error.get('exit_code') is not None:
         lines.append('Exit status: ' + ('unavailable' if error['exit_code'] < 0 else str(error['exit_code'])))
     if error.get('stderr'):
-        lines.append(error['stderr'])
+        lines.append('Command details were withheld because structured output may contain credentials or state.' if error['stderr'] == '[structured output suppressed]' else error['stderr'])
+    if reauth:
+        lines.append('If using local user Application Default Credentials, run `gcloud auth application-default login`, then retry the original command. Otherwise renew the configured Google credentials through their authentication method.')
+    elif error.get('stderr') == '[structured output suppressed]':
+        lines.append('The underlying cause could not be safely identified from this diagnostic.')
     if reason == 'executable_not_found':
         lines.append('Make OpenTofu (tofu) available on PATH and retry.' if tool == 'tofu' else f'Make {tool} available on PATH and retry.' if tool else 'Make the required executable available on PATH and retry.')
     return '\n'.join(lines)
