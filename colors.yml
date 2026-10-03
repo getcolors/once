@@ -1,6 +1,6 @@
 # New ONCE v2 deployment. Existing deployments retain their pinned launchers.
-# Secrets are loaded from .envrc.private; Google uses Application Default Credentials.
-profile: once-google
+# Runtime bindings are loaded from .envrc.private; OCI authenticates via ~/.oci/config.
+profile: once-oracle-ampere
 workdir: .colors
 compute-api-version: 2
 
@@ -10,7 +10,7 @@ once:
       image: ghcr.io/pocketcontext/pocketcontext-website:latest
       github: pocketcontext/pocketcontext-website
 
-provider-compute: google
+provider-compute: oci
 provider-smtp: resend
 provider-dns: cloudflare
 provider-backend: r2
@@ -18,17 +18,19 @@ compute-prevent-destroy: true
 compute-ssh-sources: ["0.0.0.0/0"]
 compute-http-sources: ["0.0.0.0/0"]
 
-google-project: pocketcontext
-google-region: europe-west4
-google-zone: europe-west4-b
-google-machine-type: n4a-highmem-1
-google-boot-disk-type: hyperdisk-balanced
-google-nic-type: GVNIC
-google-image-project: ubuntu-os-cloud
-google-image-family: ubuntu-2404-lts-arm64
-google-image-id: projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20260918
-google-subnet-cidr: 10.20.1.0/24
-google-boot-disk-size-gb: 100
+oci-config-file-profile: once-oracle-ampere
+# OCI placement: public subnet-ampere, root compartment, Frankfurt AD-1.
+oci-subnet-id: ocid1.subnet.oc1.eu-frankfurt-1.aaaaaaaaotya32pihejgi25vrdfnjda3qg52kpsjnd7od5oiqifbsi4rqqma
+oci-compartment-id: ocid1.tenancy.oc1..aaaaaaaal4wmmpzv2fzkdz2vrfdizywgzjid6dqlgcankrrr7jyydo7ozb3a
+oci-availability-domain: xTQn:EU-FRANKFURT-1-AD-1
+oci-shape: VM.Standard.A1.Flex
+oci-ocpus: 1
+oci-memory-in-gbs: 6
+oci-boot-volume-size-in-gbs: 100
+oci-boot-volume-vpus-per-gb: 30
+# Omit oci-image-id to discover Ubuntu 24.04 for A1 on first create.
+# Pin the resulting image OCID before subsequent creates to avoid replacement.
 
-r2-bucket: once-google-state
+# State is stored under the once-oracle-ampere prefix in this bucket.
+r2-bucket: once-oracle-ampere-state
 r2-endpoint: https://319271fed8bc6d2d9059362be1165f37.eu.r2.cloudflarestorage.com
