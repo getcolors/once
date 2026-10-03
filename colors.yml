@@ -6,9 +6,21 @@ compute-api-version: 2
 
 once:
   applications:
-    - host: www.bigconfig.online
-      image: ghcr.io/pocketcontext/pocketcontext-website:latest
-      github: pocketcontext/pocketcontext-website
+    - host: www.getcolors.ai
+      image: ghcr.io/getcolors/colors-website:latest
+      github: getcolors/colors-website
+    - host: getcolors.ai
+      image: ghcr.io/getcolors/colors-redirect:latest
+      github: getcolors/colors-redirect
+    - host: bigconfig.ai
+      image: ghcr.io/getcolors/colors-redirect:latest
+      github: getcolors/colors-redirect
+    - host: www.bigconfig.ai
+      image: ghcr.io/getcolors/colors-redirect:latest
+      github: getcolors/colors-redirect
+    - host: marketplace.bigconfig.ai
+      image: ghcr.io/getcolors/colors-redirect:latest
+      github: getcolors/colors-redirect
 
 provider-compute: oci
 provider-smtp: resend
@@ -24,9 +36,9 @@ oci-subnet-id: ocid1.subnet.oc1.eu-frankfurt-1.aaaaaaaaotya32pihejgi25vrdfnjda3q
 oci-compartment-id: ocid1.tenancy.oc1..aaaaaaaal4wmmpzv2fzkdz2vrfdizywgzjid6dqlgcankrrr7jyydo7ozb3a
 oci-availability-domain: xTQn:EU-FRANKFURT-1-AD-1
 oci-shape: VM.Standard.A1.Flex
-oci-ocpus: 1
-oci-memory-in-gbs: 6
-oci-boot-volume-size-in-gbs: 100
+oci-ocpus: 2
+oci-memory-in-gbs: 12
+oci-boot-volume-size-in-gbs: 200
 oci-boot-volume-vpus-per-gb: 30
 # Omit oci-image-id to discover Ubuntu 24.04 for A1 on first create.
 # Pin the resulting image OCID before subsequent creates to avoid replacement.
