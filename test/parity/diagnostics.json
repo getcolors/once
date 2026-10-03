@@ -240,5 +240,57 @@
       }
     },
     "expected": "Cannot prepare SSH access: Required command failed.\nCompute stage: plan\nCommand: tofu plan\nExit status: 1\nCommand details were withheld because structured output may contain credentials or state.\nThe underlying cause could not be safely identified from this diagnostic."
+  },
+  {
+    "name": "oci-authentication-ssh",
+    "event": "ssh",
+    "result": {
+      "status": "error",
+      "error": {
+        "message": "Required command failed.",
+        "stage": "plan",
+        "command": [
+          "tofu",
+          "plan"
+        ],
+        "executable": "/usr/bin/tofu",
+        "exit_code": 1,
+        "stderr": "Error: 401-NotAuthenticated, The required information to complete authentication was not provided or was incorrect.\n  on compute.tf.json line 1:\n   1: [structured output suppressed]",
+        "stdout": "PRIVATE-OCI-STATE",
+        "environment": {
+          "OCI_SECURITY_TOKEN": "PRIVATE-OCI-TOKEN"
+        },
+        "argv": [
+          "PRIVATE-OCI-ARGV"
+        ]
+      }
+    },
+    "expected": "Cannot prepare SSH access: Required command failed.\nCompute stage: plan\nCommand: tofu plan\nExecutable: /usr/bin/tofu\nExit status: 1\nError: 401-NotAuthenticated, The required information to complete authentication was not provided or was incorrect.\n  on compute.tf.json line 1:\n   1: [structured output suppressed]"
+  },
+  {
+    "name": "oci-authentication-create",
+    "event": "create",
+    "result": {
+      "status": "error",
+      "error": {
+        "message": "Required command failed.",
+        "stage": "plan",
+        "command": [
+          "tofu",
+          "plan"
+        ],
+        "executable": "/usr/bin/tofu",
+        "exit_code": 1,
+        "stderr": "Error: 401-NotAuthenticated, The required information to complete authentication was not provided or was incorrect.\n  on compute.tf.json line 1:\n   1: [structured output suppressed]",
+        "stdout": "PRIVATE-OCI-STATE",
+        "environment": {
+          "OCI_SECURITY_TOKEN": "PRIVATE-OCI-TOKEN"
+        },
+        "argv": [
+          "PRIVATE-OCI-ARGV"
+        ]
+      }
+    },
+    "expected": "Required command failed.\nCompute stage: plan\nCommand: tofu plan\nExecutable: /usr/bin/tofu\nExit status: 1\nError: 401-NotAuthenticated, The required information to complete authentication was not provided or was incorrect.\n  on compute.tf.json line 1:\n   1: [structured output suppressed]"
   }
 ]

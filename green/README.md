@@ -336,6 +336,15 @@ When the compute library identifies Google `invalid_rapt` reauthentication,
 the error names it and explains how to renew local user Application Default
 Credentials with `gcloud auth application-default login`, or renew the configured
 credentials through their own authentication method. ONCE does not launch login
-or retry operations automatically. Structured output stays suppressed to protect
-credentials and state; without a recognized diagnosis, the message explicitly
-says the underlying cause could not be safely identified.
+or retry operations automatically. Sanitized OpenTofu error text remains visible
+when a diagnostic also contains structured source excerpts; those excerpts and
+state/plan dumps stay suppressed to protect credentials and state. If nothing
+useful remains, the message says the underlying cause could not be safely identified.
+
+For OCI `401-NotAuthenticated`, check the configured session with
+`oci session validate --local --profile <oci-config-file-profile>`. Renew a
+still-refreshable session with `oci session refresh --profile <oci-config-file-profile>`.
+If the session is no longer valid, authenticate again with
+`oci session authenticate --region <region> --profile-name <oci-config-file-profile>`.
+Then retry the ONCE command. A 401 can also mean incorrect credentials; it does
+not by itself prove expiry. See the [OCI session documentation](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/clitoken.htm).
