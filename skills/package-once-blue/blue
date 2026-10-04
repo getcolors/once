@@ -4,7 +4,7 @@
 # dependencies = ["package-once-blue", "blue", "colors-compute-blue"]
 #
 # [tool.uv.sources]
-# package-once-blue = { git = "https://github.com/getcolors/once.git", rev = "633b4b3a82eb3a078ec8d5a049a6db569c9b4321", subdirectory = "blue" }
+# package-once-blue = { git = "https://github.com/getcolors/once.git", rev = "6374d37e29b54330f30d675f8aa65e47542f1008", subdirectory = "blue" }
 # blue = { git = "https://github.com/getcolors/blue.git", rev = "784018bb586882efbd91affd42139582a40ea1d1" }
 # colors-compute-blue = { git = "https://github.com/getcolors/colors-compute.git", rev = "9ecd0749e9632732f6226d5b73267dcab60c2e09", subdirectory = "blue" }
 # ///
