@@ -127,7 +127,7 @@
 (defn load-inventory
   ([opts] (load-inventory opts (System/getenv)))
   ([opts env]
-   (let [result (if (#{:describe :ssh} (:green/event opts))
+   (let [result (if (#{:describe :ssh :ssh-install} (:green/event opts))
                   (node/resolve-connection! (library-options opts) (request opts) env)
                   (node/compute-node! (library-options opts) (request opts) "inspect" env))]
      (case (:status result)

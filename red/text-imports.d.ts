@@ -6,3 +6,4 @@ declare module "*/raw" { const content: string; export default content; }
 declare module "*/deploy" { const content: string; export default content; }
 declare module "*/authorized-keys" { const content: string; export default content; }
 declare module "*/once" { const content: string; export default content; }
+declare module "*.py" { const content: string; export default content; }

@@ -451,9 +451,13 @@
                               (str dir "/main.yml")
                               data)]
         delete? (= :delete (:green/event opts))
+        _ (when (and delete? (not (machine/planning? opts))) (access/install-lock! opts))
+        installed (when-not delete? (access/installed-identity opts))
         config {:dir dir :inventory "inventory.ini"
                 :playbooks {:create "main.yml" :delete "main.yml"}
                 :extra-vars {:host_alias (:profile data)
+                             :ssh_installed (boolean installed)
+                             :ssh_identity_file (or installed "")
                              :ssh_hosts [{:name (:profile data) :ip (:ip data) :user (:user data) :identity_file (:ssh-private-key-path data)}]
                              :block_state (if delete? "absent" "present")}}]
     (ansible/ansible-with-spec opts config specs)))

@@ -1,4 +1,4 @@
-import { identityArgs } from "./access.ts";
+import { installedIdentity, installLock, identityArgs } from "./access.ts";
 import * as machine from "./machine.ts";
 import { ansibleStep, ansibleWithSpec } from "red/ansible";
 import { contentSpec, PRESERVE_JINJA_DELIMITERS, scaffold, type RenderOpts, type Spec, type Template } from "red/scaffold";
@@ -359,7 +359,9 @@ function localHostAlias(data: Opts): string {
   return String(data.name || data.profile || "once");
 }
 
-export function ansibleLocalStep(opts: Opts): Promise<Opts> {
+export async function ansibleLocalStep(opts: Opts): Promise<Opts> {
+  if (opts["red/event"] === "delete" && !opts["red/dry-run"]) await installLock(opts);
+  const installed = opts["red/event"] === "delete" ? undefined : await installedIdentity(opts);
   const dir = toolDir(opts, "ansible-local");
   const data = dataFn(opts);
   const specs = [
@@ -371,6 +373,8 @@ export function ansibleLocalStep(opts: Opts): Promise<Opts> {
     dir, inventory: "inventory.ini", playbooks: { create: "main.yml", delete: "main.yml" },
     extraVars: {
       host_alias: data.profile,
+      ssh_installed: Boolean(installed),
+      ssh_identity_file: installed ?? "",
       ssh_hosts: [{name:data.profile,ip:data.ip,user:data.user,identity_file:data['ssh-private-key-path']}],
       block_state: opts["red/event"] === "delete" ? "absent" : "present",
     },

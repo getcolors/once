@@ -136,3 +136,18 @@ If the session is no longer valid, authenticate again with
 `oci session authenticate --region <region> --profile-name <oci-config-file-profile>`.
 Then retry the ONCE command. A 401 can also mean incorrect credentials; it does
 not by itself prove expiry. See the [OCI session documentation](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/clitoken.htm).
+
+### Ordinary SSH access
+
+Run `./red ssh-install` to export the existing encrypted keypair to
+`~/.ssh/once/<profile>/` and install the profile alias using the live address.
+It requires backend/provider credentials and `COLORS_PAR_ONCE_SSH_PASSPHRASE`.
+Then `ssh <profile>`, SCP and editors use that encrypted identity and prompt for
+its passphrase. Installation checks alias ownership before exporting the key.
+`create` preserves an installed identity while refreshing the address; launcher
+`ssh`, describe and application convergence continue using temporary scoped agents.
+
+`./red ssh-uninstall` removes owned aliases and the exported keypair locally,
+without backend credentials or a passphrase. `delete` removes aliases but retains
+the encrypted export until explicit uninstall. Both commands support `--dry-run`
+without state access. Existing deployments keep their pinned launchers unchanged.

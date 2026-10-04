@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# The red launcher is the one file here that is copied out and run somewhere
-# else, so its interesting behaviour happens in environments this checkout does
+# Copied launchers resolve dependencies outside this checkout. Red bootstrap
+# behaviour happens in environments this checkout does
 # not contain: no node_modules, no manifest, or a manifest pinning a different
 # commit. `bun test` cannot reach any of that — it runs inside the checkout,
 # where `package-once-red` self-resolves to the working tree through the root
@@ -12,7 +12,8 @@ set -euo pipefail
 #
 # So this builds those environments and runs the launcher against them. Every
 # failure it catches is silent: the launcher still starts and still renders, it
-# just resolves the wrong commit.
+# just resolves the wrong commit. Green also guards new SSH commands against
+# stale packages, which otherwise could dispatch an unrecognized event as create.
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 launcher="$root/skills/package-once-red/red"
@@ -62,6 +63,18 @@ if [ -d "$cache/package-once-red" ]; then
 fi
 ok "a checkout refuses to bootstrap and says what to install"
 
+# New verbs must work against the current Green classpath and must remain dry.
+for command in ssh-install ssh-uninstall; do
+  out=$(cd "$root/green" && env -u ONCE_LIB_ROOT -u GREEN_LIB_ROOT \
+    COLORS_PAR_WORKDIR="$tmp/green-current" ./green "$command" --dry-run \
+      -f "$root/test/parity/colors.yml" 2>&1) ||
+    fail "current Green launcher rejected $command: $out"
+  grep -q "dry-run: would run :once/$command ($command)" <<<"$out" ||
+    fail "current Green launcher dispatched the wrong $command graph: $out"
+  [ ! -e "$tmp/green-current" ] || fail "Green $command dry-run wrote its work directory"
+  ok "current Green launcher dispatches $command without effects"
+done
+
 # Everything below resolves real git dependencies. Skip rather than fail when
 # GitHub is unreachable, the way the end-to-end suites skip without tofu.
 if ! git ls-remote https://github.com/getcolors/once.git HEAD >/dev/null 2>&1; then
@@ -69,6 +82,35 @@ if ! git ls-remote https://github.com/getcolors/once.git HEAD >/dev/null 2>&1; t
   echo "launcher: $checks check passed"
   exit 0
 fi
+
+# A copied Green payload must refuse new verbs when its ONCE pin predates them.
+# Keep this published fixture stale even after the shipping launcher is repinned.
+mkdir -p "$tmp/green-stale"
+python3 - "$root/skills/package-once-green/green" "$tmp/green-stale/green" <<'PYTHON'
+import pathlib, re, sys
+source = pathlib.Path(sys.argv[1]).read_text()
+source, count = re.subn(r'\(def \^:private once-sha "[0-9a-f]{40}"',
+                      '(def ^:private once-sha "633b4b3a82eb3a078ec8d5a049a6db569c9b4321"', source)
+assert count == 1, 'could not pin the stale Green fixture'
+pathlib.Path(sys.argv[2]).write_text(source)
+PYTHON
+chmod +x "$tmp/green-stale/green"
+for command in ssh-install ssh-uninstall; do
+  set +e
+  out=$(cd "$tmp/green-stale" && env -u ONCE_LIB_ROOT -u GREEN_LIB_ROOT \
+    COLORS_PAR_WORKDIR="$tmp/green-stale-out" ./green "$command" --dry-run \
+      -f "$root/test/parity/colors.yml" 2>&1)
+  code=$?
+  set -e
+  [ "$code" -eq 2 ] || fail "stale Green $command exited $code, expected 2: $out"
+  grep -q "the resolved ONCE package does not support $command; update the skill or repin" <<<"$out" ||
+    fail "stale Green $command lost its capability refusal: $out"
+  if grep -q 'once/start\|would run' <<<"$out"; then
+    fail "stale Green $command dispatched a workflow before refusing: $out"
+  fi
+  [ ! -e "$tmp/green-stale-out" ] || fail "stale Green $command touched its work directory"
+  ok "copied Green payload refuses unsupported $command before dispatch"
+done
 
 # ---------------------------------------------------------------------------
 # 2. A payload that lands where nothing declares it resolves its own pins.

@@ -152,7 +152,7 @@ async def step(opts):
 
 
 async def load(opts, env=None):
-    result = await resolve_connection(library_options(opts), request(opts), env) if opts.get('blue/event') in ('ssh', 'describe') else await compute_node(library_options(opts), request(opts), 'inspect', env)
+    result = await resolve_connection(library_options(opts), request(opts), env) if opts.get('blue/event') in ('ssh', 'ssh-install', 'describe') else await compute_node(library_options(opts), request(opts), 'inspect', env)
     if result['status'] == 'destroyed' and opts.get('blue/event') == 'delete':
         return {**opts, 'blue/exit': 0, 'colors-compute/already-destroyed': True}
     if result['status'] == 'destroyed':

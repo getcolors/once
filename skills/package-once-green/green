@@ -134,7 +134,7 @@
 ;; CLI
 
 (def usage
-  "Usage: green <build|create|delete|describe|ssh> [-f|--file colors.yml] [--dry-run]")
+  "Usage: green <build|create|delete|describe|ssh|ssh-install|ssh-uninstall> [-f|--file colors.yml] [--dry-run]")
 
 (defn run
   "REPL-friendly entry point that returns the final opts map."
@@ -143,10 +143,16 @@
         command (first args)]
     (cond
       (contains? #{"help" "--help" "-h"} command) {:green/exit 0 :green/err usage}
-      (contains? #{"create" "delete" "build" "describe" "ssh"} command)
+      (contains? #{"create" "delete" "build" "describe" "ssh" "ssh-install" "ssh-uninstall"} command)
       ;; resolved rather than aliased: the namespaces are only known to have
       ;; loaded once contract-error has passed
       (or (contract-error)
+          (when (and (#{"ssh-install" "ssh-uninstall"} command)
+                     (not (ns-resolve 'io.github.getcolors.once.access
+                                      (if (= command "ssh-install") 'install-step 'uninstall-step))))
+            {:green/exit 2
+             :green/err (str "the resolved ONCE package does not support " command
+                             "; update the skill or repin")})
           (if (= "describe" command)
             ((requiring-resolve 'io.github.getcolors.once.describe/describe-file)
              (describe-args args))

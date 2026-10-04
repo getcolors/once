@@ -48,6 +48,8 @@ async def _adopt_existing_state(opts: dict) -> dict:
 async def start_step(original: dict, env: dict[str, str] | None = None) -> dict:
     async def after(opts, _env, context):
         context = {**context, 'real': not machine.planning(opts)}
+        if context['event'] == 'ssh-uninstall':
+            return opts
         if context['event'] == 'build':
             opts = {**opts, 'workdir': str(opts['workdir']) + '/build'}
         if not opts.get('blue/dry-run'):
@@ -56,7 +58,7 @@ async def start_step(original: dict, env: dict[str, str] | None = None) -> dict:
             opts = await step(opts)
             if failed(opts):
                 return opts
-        if context['real'] and (context['event'] in ('delete', 'ssh') or opts.get('compute-require-existing-state') is True):
+        if context['real'] and (context['event'] in ('delete', 'ssh', 'ssh-install') or opts.get('compute-require-existing-state') is True):
             opts = await machine.load(opts, _env)
             if failed(opts):
                 return opts
@@ -86,10 +88,14 @@ async def ansible_cleanup_step(opts: dict) -> dict:
 
 
 tofu_steps = ["once/tofu-compute", "once/tofu-smtp", "once/tofu-dns", "once/tofu-smtp-post"]
-side_effecting_steps = [*tofu_steps, "once/ansible-local", "once/ansible-remote", "once/ansible-cleanup", "once/github", "once/ssh-cleanup", "once/registration-delete", "once/ssh"]
+side_effecting_steps = [*tofu_steps, "once/ansible-local", "once/ansible-remote", "once/ansible-cleanup", "once/github", "once/ssh-cleanup", "once/registration-delete", "once/ssh", "once/ssh-install", "once/ssh-uninstall"]
 
 
 def wire_fn(step: str, run_opts: dict):
+    if run_opts.get("blue/event") == "ssh-uninstall":
+        return {"once/start": (start_step, "once/ssh-uninstall"), "once/ssh-uninstall": (access.uninstall_step,)}.get(step)
+    if run_opts.get("blue/event") == "ssh-install":
+        return {"once/start": (start_step, "once/ssh-install"), "once/ssh-install": (access.install_step,)}.get(step)
     if run_opts.get("blue/event") == "ssh":
         return {"once/start": (start_step, "once/ssh"), "once/ssh": (access.ssh_step,)}.get(step)
     if run_opts.get("blue/event") == "delete":

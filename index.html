@@ -643,7 +643,7 @@
             <tr><td><code>uv</code> and Python 3.11+</td><td>Blue launcher commands</td><td>Runs <code>./blue</code> from PEP 723 metadata.</td></tr>
             <tr><td><code>OpenTofu</code></td><td>Real create, delete, and state-backed describe</td><td>Manages compute, SMTP, DNS, and verification state.</td></tr>
             <tr><td><code>Ansible</code></td><td>Real create and delete</td><td>Configures the remote host and ONCE applications; delete replays the local play to drop the managed SSH block.</td></tr>
-            <tr><td><code>OpenSSH</code></td><td>Create and describe</td><td>Private compute key should already be available through <code>ssh-agent</code>.</td></tr>
+            <tr><td><code>OpenSSH</code></td><td>Create and describe</td><td>Launcher access unlocks a temporary scoped agent; ordinary SSH uses an encrypted export installed with <code>ssh-install</code>.</td></tr>
             <tr><td><code>skopeo</code></td><td>Describe</td><td>Compares the running image digest against the registry. Without it, updates report as unknown.</td></tr>
           </tbody>
         </table>
@@ -1083,6 +1083,9 @@ r2-endpoint: https://ACCOUNT_ID.r2.cloudflarestorage.com</code></pre>
         </article>
         <article class="card">
           <p class="label">Operations</p>
+          <h3>Ordinary SSH access</h3>
+          <p>Run <code>./COLOR ssh-install</code> to export the existing encrypted keypair into <code>~/.ssh/once/&lt;profile&gt;/</code> and install the profile alias using its live address. Then use <code>ssh &lt;profile&gt;</code>, SCP, or an editor; OpenSSH prompts for the key passphrase. Installation verifies ownership and checks configuration collisions before writing the key. A later <code>create</code> preserves this installed identity while refreshing the address.</p>
+          <p><code>./COLOR ssh-uninstall</code> removes owned aliases first, then the exported files, entirely locally without backend credentials or a passphrase. Delete removes aliases but retains the export until explicit uninstall. Both commands support <code>--dry-run</code> without reading or writing state.</p>
           <h3>Scoped SSH access</h3>
           <p>Use <code>./COLOR ssh</code> for operator access. A temporary scoped agent unlocks the encrypted identity; Ansible and describe use the same mechanism. The identity file is a public cache, and decrypted private keys are never persisted. Ambient agents, forwarding and connection multiplexing are disabled. External machine-key references are not accepted by the greenfield v2 implementation.</p>
         </article>
@@ -1099,7 +1102,7 @@ ssh -T deploy@203.0.113.10 &lt; /dev/null</code></pre>
 
     <section id="commands">
       <h2 class="anchor-heading"><a href="#commands" aria-label="Link to Command overview">#</a>Command overview</h2>
-      <pre><code class="language-text">Usage: ./&lt;color&gt; &lt;build|create|delete|describe|ssh&gt; [-f|--file &lt;color-state&gt;] [--dry-run]
+      <pre><code class="language-text">Usage: ./&lt;color&gt; &lt;build|create|delete|describe|ssh|ssh-install|ssh-uninstall&gt; [-f|--file &lt;color-state&gt;] [--dry-run]
 Colors: green / red / blue</code></pre>
       <div class="table-wrap">
         <table>
@@ -1108,6 +1111,8 @@ Colors: green / red / blue</code></pre>
             <tr><td><code>./COLOR build</code></td><td>Validate and render all stage files.</td><td>Writes only the local work directory.</td></tr>
             <tr><td><code>./COLOR create --dry-run</code></td><td>Validate and print the create DAG.</td><td>None.</td></tr>
             <tr><td><code>./COLOR create</code></td><td>Provision infrastructure and reconcile the server.</td><td>Yes.</td></tr>
+            <tr><td><code>./COLOR ssh-install</code></td><td>Install encrypted identity and ordinary SSH aliases.</td><td>Local SSH files.</td></tr>
+            <tr><td><code>./COLOR ssh-uninstall</code></td><td>Remove owned aliases and exported identity offline.</td><td>Local SSH files.</td></tr>
             <tr><td><code>./COLOR describe</code></td><td>Read state, probe SSH, and list ONCE applications.</td><td>Read-only.</td></tr>
             <tr><td><code>./COLOR delete --dry-run</code></td><td>Validate and print the delete DAG.</td><td>None.</td></tr>
             <tr><td><code>./COLOR delete</code></td><td>Destroy managed infrastructure in reverse order.</td><td>Destructive.</td></tr>

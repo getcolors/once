@@ -216,3 +216,7 @@ PYTHON
 # Command failures, OCI provider errors, Google reauthentication and suppressed diagnostics
 # must remain clear even though they never render artifacts.
 bash "$root/scripts/diagnostics-parity.sh"
+
+# Durable SSH exports and local ownership ordering never reach build artifacts.
+bash "$root/scripts/ssh-install-parity.sh"
+python3 -m unittest discover -s "$root/test/python"

@@ -81,13 +81,14 @@
                 (green-cli/par-name :compute-prevent-destroy) "=false to delete")]))]
      :after-validate
      (fn [opts env {:keys [event real?]}]
+       (if (= :ssh-uninstall event) (assoc opts :green/exit 0)
        (let [real? (and real? (not= :build event))
              opts (cond-> opts (= :build event) (update :workdir #(str % "/build")))
              _ (when-not (:green/dry-run opts) (access/lock! opts))
              prepared (if (:green/dry-run opts) (assoc opts :once/ssh-resource machine/placeholder-resource) (access/resource-step opts))
              prepared (if (or (:green/dry-run opts) (wf/failed? prepared)) prepared (access/registration-step prepared))
              loaded (if (and real? (not (wf/failed? prepared))
-                             (or (#{:delete :ssh} event) (:compute-require-existing-state opts)))
+                             (or (#{:delete :ssh :ssh-install} event) (:compute-require-existing-state opts)))
                       (machine/load-inventory prepared env) prepared)]
          (cond
            (wf/failed? loaded) loaded
@@ -100,7 +101,7 @@
                  ready (if (and real? (= :delete event))
                          (let [smtp (state-output ready "tofu-smtp")]
                            (cond-> ready smtp (-> (merge smtp) (assoc :once/smtp-params smtp)))) ready)]
-             (with-deploy-keys ready real?)))))}
+             (with-deploy-keys ready real?))))))}
     env)))
 
 (defn ansible-cleanup-step
@@ -120,12 +121,17 @@
 
 (def side-effecting-steps
   (into tofu-steps [:once/ansible-local :once/ansible-remote
-                    :once/ansible-cleanup :once/github :once/ssh-cleanup :once/registration-delete :once/ssh]))
+                    :once/ansible-cleanup :once/github :once/ssh-cleanup :once/registration-delete :once/ssh :once/ssh-install :once/ssh-uninstall]))
 
 (defn wire-fn
   [step run-opts]
-  (if (= :ssh (:green/event run-opts))
-    (case step :once/start [start-step :once/ssh] :once/ssh [access/ssh-step])
+  (if (#{:ssh :ssh-install :ssh-uninstall} (:green/event run-opts))
+    (let [target (keyword "once" (name (:green/event run-opts)))]
+      (case step
+        :once/start [start-step target]
+        :once/ssh [access/ssh-step]
+        :once/ssh-install [access/install-step]
+        :once/ssh-uninstall [access/uninstall-step]))
   (if (= :delete (:green/event run-opts))
     (case step
       ;; Revoking runs before anything is destroyed: a withdrawn credential

@@ -67,3 +67,99 @@ async def test_registration_retirement_preserves_encrypted_authority(monkeypatch
     result = await access.registration_delete({**valid, 'once/ssh-resource': machine.PLACEHOLDER})
     assert result['blue/exit'] == 0
     assert calls == [('once-ssh-registration.tfstate', 'delete')]
+
+
+@pytest.mark.asyncio
+async def test_install_preflights_before_export_and_retains_on_config_failure(monkeypatch):
+    monkeypatch.setattr(access, 'install_lock', lambda _: None)
+    calls = []
+    async def export(opts, operation):
+        calls.append(operation)
+        return {'status': 'installed', 'private_key_file': '/tmp/encrypted-identity'}
+    async def config(payload):
+        calls.append('preflight' if payload.get('check_only') else 'config')
+        return {'exit': 0 if payload.get('check_only') else 1, 'err': 'collision'}
+    result = await access.install_step({**valid, 'blue/event': 'ssh-install', 'ip': '192.0.2.1', 'user': 'root'}, export, config)
+    assert calls == ['preflight', 'install', 'config']
+    assert result['blue/exit'] == 1
+    assert result['blue/err'] == 'SSH config update failed: collision'
+
+
+@pytest.mark.asyncio
+async def test_uninstall_removes_aliases_before_export_and_is_dry_run_safe(monkeypatch):
+    calls = []
+    monkeypatch.setattr(access, 'lock', lambda _: calls.append('lock'))
+    monkeypatch.setattr(access, 'install_lock', lambda _: calls.append('install-lock'))
+    async def export(opts, operation):
+        calls.append(operation)
+        return {'status': 'installed' if operation == 'inspect' else 'removed'}
+    async def config(payload):
+        calls.append('config')
+        assert payload['ssh_hosts'] == []
+        return {'exit': 0}
+    opts = {**valid, 'blue/event': 'ssh-uninstall'}
+    assert (await access.uninstall_step(opts, export, config))['blue/exit'] == 0
+    assert calls == ['lock', 'install-lock', 'inspect', 'config', 'remove']
+    calls.clear()
+    await access.uninstall_step({**opts, 'blue/dry-run': True}, export, config)
+    await access.install_step({**opts, 'blue/dry-run': True}, export, config)
+    assert calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('kind', ['parent-link', 'ssh-link', 'lock-link', 'hardlink', 'owner'])
+async def test_install_lock_refuses_unsafe_paths(tmp_path, monkeypatch, kind):
+    import os
+    home = tmp_path.resolve() / 'home'
+    home.mkdir()
+    ssh_dir = home / '.ssh'
+    ssh_dir.mkdir()
+    other = tmp_path.resolve() / 'other'
+    other.mkdir()
+    if kind == 'parent-link':
+        link = tmp_path.resolve() / 'link'
+        link.symlink_to(home, target_is_directory=True)
+        home = link
+    elif kind == 'ssh-link':
+        ssh_dir.rmdir()
+        ssh_dir.symlink_to(other, target_is_directory=True)
+    elif kind in ('lock-link', 'hardlink'):
+        target = other / 'file'
+        target.write_text('untouched')
+        lock_file = ssh_dir / '.once-install-demo.lock'
+        if kind == 'lock-link':
+            lock_file.symlink_to(target)
+        else:
+            os.link(target, lock_file)
+    elif kind == 'owner':
+        uid = os.getuid()
+        monkeypatch.setattr(access.os, 'getuid', lambda: uid + 1)
+    async def body():
+        with pytest.raises(ValueError, match='unsafe SSH directory owner' if kind == 'owner' else 'unsafe ONCE installation lock'):
+            access.install_lock({'profile': 'demo'}, home)
+    await access.scoped(body)
+    if kind in ('lock-link', 'hardlink'):
+        assert target.read_text() == 'untouched'
+
+
+@pytest.mark.asyncio
+async def test_install_lock_serializes_and_releases(tmp_path):
+    home = tmp_path.resolve()
+    async def body():
+        access.install_lock({'profile': 'demo'}, home)
+        with pytest.raises(ValueError, match='another ONCE operation owns this SSH installation'):
+            access.install_lock({'profile': 'demo'}, home)
+    await access.scoped(body)
+    await access.scoped(body)
+
+
+@pytest.mark.asyncio
+async def test_uninstall_preflight_is_offline(monkeypatch):
+    from package_once_blue.workflow import start_step
+    def unexpected(*args, **kwargs):
+        pytest.fail('offline uninstall touched runtime resources')
+    for name in ('resource_step', 'registration_step', 'agent_step', 'lock'):
+        monkeypatch.setattr(access, name, unexpected)
+    monkeypatch.setattr(machine, 'load', unexpected)
+    result = await start_step({**valid, 'blue/event': 'ssh-uninstall'}, {})
+    assert not result.get('blue/exit')

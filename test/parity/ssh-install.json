@@ -1,0 +1,62 @@
+{
+  "base": {
+    "profile": "parity",
+    "ip": "203.0.113.10",
+    "user": "ubuntu"
+  },
+  "cases": [
+    {
+      "name": "install",
+      "command": "install"
+    },
+    {
+      "name": "install-preflight-refused",
+      "command": "install",
+      "config_failure": "preflight"
+    },
+    {
+      "name": "install-export-refused",
+      "command": "install",
+      "export_failure": "install"
+    },
+    {
+      "name": "install-config-refused",
+      "command": "install",
+      "config_failure": "present"
+    },
+    {
+      "name": "uninstall",
+      "command": "uninstall"
+    },
+    {
+      "name": "uninstall-absent",
+      "command": "uninstall",
+      "absent": true
+    },
+    {
+      "name": "uninstall-inspect-refused",
+      "command": "uninstall",
+      "export_failure": "inspect"
+    },
+    {
+      "name": "uninstall-config-refused",
+      "command": "uninstall",
+      "config_failure": "absent"
+    },
+    {
+      "name": "uninstall-remove-refused",
+      "command": "uninstall",
+      "export_failure": "remove"
+    },
+    {
+      "name": "install-dry-run",
+      "command": "install",
+      "dry_run": true
+    },
+    {
+      "name": "uninstall-dry-run",
+      "command": "uninstall",
+      "dry_run": true
+    }
+  ]
+}

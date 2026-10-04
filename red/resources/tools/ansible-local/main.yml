@@ -15,7 +15,7 @@
           - -c
           - |
               #!/usr/bin/env python3
-              """Reference copied into package-owned Ansible plays; stdin contains connection metadata."""
+              """Package-owned SSH config updater; stdin contains only connection metadata."""
               import fcntl
               import ipaddress
               import json
@@ -37,8 +37,12 @@
                   mode = payload.get('block_state')
                   if mode not in ('present', 'absent') or type(payload.get('keygen')) is not bool:
                       raise ValueError('invalid SSH block request')
+                  installed = payload.get('installed', False)
+                  check_only = payload.get('check_only', False)
+                  if type(installed) is not bool or type(check_only) is not bool:
+                      raise ValueError('invalid SSH installation flags')
                   hosts = payload.get('ssh_hosts')
-                  if not isinstance(hosts, list) or not hosts or len(hosts) > 1001:
+                  if not isinstance(hosts, list) or (mode == 'present' and not hosts) or len(hosts) > 1001:
                       raise ValueError('invalid SSH host inventory')
                   aliases = set()
                   for host in hosts:
@@ -56,35 +60,40 @@
                           raise ValueError('invalid SSH user')
                       if not isinstance(address, str) or str(ipaddress.ip_address(address)) != address:
                           raise ValueError('invalid SSH address')
-                  if profile.lower() not in aliases:
+                  if mode == 'present' and profile.lower() not in aliases:
                       raise ValueError('missing SSH entry alias')
                   legacy = payload.get('legacy_marker_prefix', '')
                   if not isinstance(legacy, str) or (legacy and not re.fullmatch(r'[a-z][a-z0-9-]{0,31}', legacy)):
                       raise ValueError('invalid legacy SSH marker')
                   home = pathlib.Path(home or os.environ.get('HOME') or pwd.getpwuid(os.getuid()).pw_dir)
+                  if not home.is_absolute() or any(p.is_symlink() for p in (home, *home.parents)) or not home.is_dir():
+                      raise ValueError('unsafe SSH home')
                   directory = home / '.ssh'
-                  if not directory.exists() and mode == 'absent':
+                  if not directory.exists() and not directory.is_symlink() and mode == 'absent':
                       return False
-                  directory.mkdir(mode=0o700, exist_ok=True)
-                  if directory.is_symlink() or not directory.is_dir() or directory.stat().st_uid != os.getuid():
+                  if not check_only:
+                      directory.mkdir(mode=0o700, exist_ok=True)
+                  if directory.is_symlink() or (directory.exists() and (not directory.is_dir() or directory.stat().st_uid != os.getuid())):
                       raise ValueError('unsafe SSH directory')
-                  os.chmod(directory, 0o700)
+                  if not check_only:
+                      os.chmod(directory, 0o700)
                   lock = directory / '.colors-ssh-config.lock'
-                  fd = os.open(lock, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+                  fd = None if check_only else os.open(lock, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
                   try:
-                      info = os.fstat(fd)
-                      if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_nlink != 1:
-                          raise ValueError('unsafe SSH config lock')
-                      os.fchmod(fd, 0o600)
-                      deadline = time.monotonic() + 30
-                      while True:
-                          try:
-                              fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                              break
-                          except BlockingIOError:
-                              if time.monotonic() >= deadline:
-                                  raise ValueError('SSH config lock timed out')
-                              time.sleep(0.025)
+                      if fd is not None:
+                          info = os.fstat(fd)
+                          if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_nlink != 1:
+                              raise ValueError('unsafe SSH config lock')
+                          os.fchmod(fd, 0o600)
+                          deadline = time.monotonic() + 30
+                          while True:
+                              try:
+                                  fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                                  break
+                              except BlockingIOError:
+                                  if time.monotonic() >= deadline:
+                                      raise ValueError('SSH config lock timed out')
+                                  time.sleep(0.025)
                       path = directory / 'config'
                       if path.is_symlink():
                           raise ValueError('unsafe SSH config file')
@@ -138,15 +147,19 @@
                           for host in hosts:
                               block.extend(['Host ' + host['name'], '    HostName ' + host['ip'], '    User ' + host['user'], '    Port 22'])
                               if payload['keygen']:
-                                  identity = host.get('identity_file', '')
+                                  identity = payload.get('identity_file') or host.get('identity_file', '')
                                   if not isinstance(identity, str) or not identity.startswith('/') or any(c in identity for c in '\r\n\x00\"'):
                                       raise ValueError('invalid public identity path')
-                                  block.extend(['    IdentityFile \"' + identity + '\"', '    IdentitiesOnly yes', '    IdentityAgent none', '    ControlMaster no', '    ControlPersist no', '    ControlPath none'])
+                                  block.extend(['    IdentityFile \"' + identity + '\"', '    IdentitiesOnly yes', '    IdentityAgent none'])
+                              if payload['keygen'] and not installed:
+                                  block.extend(['    ControlMaster no', '    ControlPersist no', '    ControlPath none'])
+                              if installed:
+                                  block.extend(['    AddKeysToAgent no', '    IgnoreUnknown UseKeychain', '    UseKeychain no'])
                               block.extend(['    StrictHostKeyChecking accept-new', '    ForwardAgent no'])
                           new = '\n'.join(block + [end, '']) + remainder
                       else:
                           new = remainder
-                      if new == old:
+                      if check_only or new == old:
                           return False
                       temporary_fd, temporary = tempfile.mkstemp(prefix='.colors-config-', dir=directory)
                       try:
@@ -161,7 +174,8 @@
                               os.unlink(temporary)
                       return True
                   finally:
-                      os.close(fd)
+                      if fd is not None:
+                          os.close(fd)
 
 
               if __name__ == '__main__':
@@ -170,7 +184,7 @@
                   except Exception as error:
                       print(str(error), file=sys.stderr)
                       sys.exit(1)
-        stdin: "{{ {'host_alias': host_alias, 'ssh_hosts': ssh_hosts, 'block_state': block_state, 'keygen': colors_keygen, 'legacy_marker_prefix': ssh_legacy_marker_prefix | default('')} | to_json }}"
+        stdin: "{{ {'host_alias': host_alias, 'ssh_hosts': ssh_hosts, 'block_state': block_state, 'keygen': colors_keygen, 'installed': ssh_installed | default(false), 'identity_file': ssh_identity_file | default(''), 'legacy_marker_prefix': ssh_legacy_marker_prefix | default('')} | to_json }}"
       environment:
         HOME: "{{ lookup('env', 'HOME') }}"
       register: colors_ssh_update

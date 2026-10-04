@@ -58,6 +58,13 @@ create. A temporary scoped agent unlocks the key without persisting decrypted
 material. Use `./COLOR ssh`, replacing COLOR with your selected launcher.
 Delete retains this authority after destroying compute and registration.
 
+For ordinary SSH, SCP and editors, `./COLOR ssh-install` exports the existing
+encrypted keypair to `~/.ssh/once/<profile>/` and installs the alias with the live
+address. OpenSSH prompts for its passphrase. Create preserves the installed
+identity. Delete removes aliases but keeps the export; `./COLOR ssh-uninstall`
+removes owned aliases and exported keys offline, without backend/provider
+credentials or a passphrase. Neither command persists decrypted key material.
+
 Compute supports R2 and S3 remote state. S3 needs `s3-bucket` and `s3-region`
 and uses the ambient AWS credential chain. R2 needs `r2-bucket`, `r2-endpoint`,
 `COLORS_PAR_R2_ACCESS_KEY_ID` and `COLORS_PAR_R2_SECRET_ACCESS_KEY`.

@@ -98,3 +98,19 @@ If the session is no longer valid, authenticate again with
 `oci session authenticate --region <region> --profile-name <oci-config-file-profile>`.
 Then retry the ONCE command. A 401 can also mean incorrect credentials; it does
 not by itself prove expiry. See the [OCI session documentation](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/clitoken.htm).
+
+
+For ordinary SSH, SCP, and editors, run `./green ssh-install`. It retrieves the
+existing encrypted keypair into `~/.ssh/once/<profile>/`, verifies ownership,
+resolves the live address, and installs the managed `Host <profile>` alias.
+Ordinary `ssh <profile>` prompts for the key passphrase; it does not consume
+`COLORS_PAR_ONCE_SSH_PASSPHRASE` or automatically cache the key in an agent or
+Keychain. Agent forwarding stays disabled. Repeat installation to refresh the
+address; later creates preserve the installed identity. Launcher `ssh`, describe,
+and application convergence retain their independent scoped agents.
+
+`./green ssh-uninstall` removes owned local aliases and exported keys without
+backend/provider credentials or a passphrase. It retains remote encrypted
+authority. Machine deletion removes aliases but leaves the local export until
+uninstall. Failed alias installation may leave an owned encrypted export for
+retry or uninstall. Both commands support `--dry-run` without state access.

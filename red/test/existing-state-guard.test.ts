@@ -47,3 +47,17 @@ test('failed local cleanup never invokes remote cleanup',async()=>{
  const remote=spyOn(tools,'ansibleRemoteStep').mockImplementation(async()=>{throw Error('remote after local failure');});
  try{expect((await w.ansibleCleanupStep({'red/event':'delete'}))['red/exit']).toBe(1);expect(remote).not.toHaveBeenCalled();}finally{local.mockRestore();remote.mockRestore();}
 });
+
+
+test('guarded ssh-install resolves live connection without loading or unlocking',async()=>{
+ const calls:string[]=[];
+ const resource=spyOn(access,'resourceStep').mockImplementation(async o=>{calls.push('resource');return {...o,'once/ssh-resource':machine.placeholderResource};});
+ const registration=spyOn(access,'registrationStep').mockImplementation(async o=>{calls.push('registration');return o;});
+ const connection=spyOn(access,'connectionStep').mockImplementation(async o=>{calls.push('connection');return {...o,ip:'192.0.2.1',user:'root'};});
+ const load=spyOn(machine,'load').mockImplementation(async()=>{throw Error('extra ownership read');});
+ const agent=spyOn(access,'agentStep').mockImplementation(async()=>{throw Error('unnecessary unlock');});
+ try{
+  expect((await w.startStep({...input,'red/event':'ssh-install'},{}))['red/exit']).toBe(0);
+  expect(calls).toEqual(['resource','registration','connection']);expect(load).not.toHaveBeenCalled();expect(agent).not.toHaveBeenCalled();
+ }finally{resource.mockRestore();registration.mockRestore();connection.mockRestore();load.mockRestore();agent.mockRestore();}
+});

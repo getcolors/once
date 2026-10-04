@@ -16,6 +16,21 @@ changing the binding does not rotate encryption. No decrypted private key is
 persisted. Operator SSH, describe and application convergence use a temporary
 scoped agent and a public identity cache. Use the launcher's `ssh` command.
 
+For ordinary SSH, SCP, and editors, run `./green ssh-install`. It retrieves the
+existing encrypted keypair into `~/.ssh/once/<profile>/`, verifies ownership,
+resolves the live address, and installs the managed `Host <profile>` alias.
+Ordinary `ssh <profile>` prompts for the key passphrase; it does not consume
+`COLORS_PAR_ONCE_SSH_PASSPHRASE` or automatically cache the key in an agent or
+Keychain. Agent forwarding stays disabled. Repeat installation to refresh the
+address; later creates preserve the installed identity. Launcher `ssh`, describe,
+and application convergence retain their independent scoped agents.
+
+`./green ssh-uninstall` removes owned local aliases and exported keys without
+backend/provider credentials or a passphrase. It retains remote encrypted
+authority. Machine deletion removes aliases but leaves the local export until
+uninstall. Failed alias installation may leave an owned encrypted export for
+retry or uninstall. Both commands support `--dry-run` without state access.
+
 R2 and S3 are supported; local compute state and `provider-compute: no-infra`
 are refused. Supply `compute-ssh-sources` and `compute-http-sources`, or the
 selected provider's legacy source keys. Compute completes before SMTP and DNS;

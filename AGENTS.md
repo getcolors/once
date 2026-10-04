@@ -14,7 +14,13 @@ authority is retained at `<profile>/ssh/machine-access/resource.json` in the
 backend. Supply `COLORS_PAR_ONCE_SSH_PASSPHRASE` at runtime and back it up;
 changing the binding does not rotate encryption. No decrypted private key is
 persisted. Operator SSH, describe and application convergence use a temporary
-scoped agent and a public identity cache. Use the launcher's `ssh` command.
+scoped agent and a public identity cache. Use the launcher's `ssh` command. Ordinary SSH access is opt-in through
+`ssh-install`, which exports only the encrypted keypair under
+`~/.ssh/once/<profile>/` after checking local configuration ownership and resolves
+the live connection address. Create preserves an installed identity. Delete
+removes aliases but retains exported keys; `ssh-uninstall` removes owned aliases
+before exported keys offline, without backend credentials or a passphrase.
+Installation is locked per profile; both commands' dry-runs access no state.
 
 R2 and S3 are supported; local compute state and `provider-compute: no-infra`
 are refused. Supply `compute-ssh-sources` and `compute-http-sources`, or the
@@ -114,7 +120,9 @@ cd blue && uv sync && uv run python -m pytest -q
 ./scripts/launcher.sh
 ```
 
-`launcher.sh` covers the red launcher in the environments a copied payload
+`launcher.sh` checks Green SSH install/uninstall dry-runs and refuses those
+commands against a stale copied payload before workflow dispatch. It also
+covers the red launcher in the environments a copied payload
 actually lands in — no manifest, or one pinning a different commit — which no
 suite here can reach, since all of them run inside a checkout where the package
 self-resolves to the working tree. It skips its resolution checks when GitHub is

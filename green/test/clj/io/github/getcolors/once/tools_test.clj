@@ -5,7 +5,8 @@
    [clojure.string :as str]
    [clojure.test :refer [deftest is testing]]
    [green.ansible :as ansible]
-   [io.github.getcolors.once.tools :as tools]))
+   [io.github.getcolors.once.tools :as tools]
+   [io.github.getcolors.once.access :as access]))
 
 (defn- temp-dir
   []
@@ -361,7 +362,9 @@
   (let [workdir (temp-dir)]
     (try
       (testing "build renders the playbook without invoking ansible"
-        (with-redefs [ansible/ansible-step
+        (with-redefs [access/installed-identity (constantly nil)
+                      access/install-lock! (constantly nil)
+                      ansible/ansible-step
                       (fn [& _] (throw (ex-info "ansible must not run for build" {})))]
           (let [result (tools/ansible-local-step (local-opts workdir :build))]
             (is (zero? (:green/exit result)))))
@@ -376,7 +379,9 @@
 
       (testing "create runs the playbook with the vars it needs"
         (let [calls (atom [])]
-          (with-redefs [ansible/ansible-step
+          (with-redefs [access/installed-identity (constantly nil)
+                      access/install-lock! (constantly nil)
+                      ansible/ansible-step
                         (fn [opts args] (swap! calls conj args) opts)]
             (tools/ansible-local-step (local-opts workdir :create)))
           (is (= 1 (count @calls)))
@@ -384,7 +389,7 @@
             (is (= "inventory.ini" inventory))
             (is (= {:create "main.yml" :delete "main.yml"} playbooks))
             (testing "name is reserved in Ansible, so it is passed as host_alias"
-              (is (= {:host_alias "test"
+              (is (= {:host_alias "test" :ssh_installed false :ssh_identity_file ""
                       :ssh_hosts [{:name "test" :ip "203.0.113.10" :user "root" :identity_file nil}]
                       :block_state "present"}
                      extra-vars))))))
@@ -394,7 +399,9 @@
                                             "ansible-local")
                             "main.yml")
               calls (atom [])]
-          (with-redefs [ansible/ansible-step
+          (with-redefs [access/installed-identity (constantly nil)
+                      access/install-lock! (constantly nil)
+                      ansible/ansible-step
                         (fn [opts args]
                           ;; the playbook must still exist when ansible runs
                           (swap! calls conj (assoc args :playbook-present?
@@ -413,7 +420,9 @@
 
       (testing "the alias falls back to the profile when Tofu state is unreadable"
         (let [calls (atom [])]
-          (with-redefs [ansible/ansible-step
+          (with-redefs [access/installed-identity (constantly nil)
+                      access/install-lock! (constantly nil)
+                      ansible/ansible-step
                         (fn [opts args] (swap! calls conj args) opts)]
             (tools/ansible-local-step (-> (local-opts workdir :delete)
                                           (dissoc :name))))

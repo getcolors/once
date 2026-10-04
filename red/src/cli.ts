@@ -4,7 +4,7 @@ import type { Opts } from "red/workflow";
 import { describeFile } from "./describe.ts";
 import { onceWorkflow } from "./workflow.ts";
 
-export const usage = "Usage: red <build|create|delete|describe|ssh> [-f|--file colors.yml] [--dry-run]";
+export const usage = "Usage: red <build|create|delete|describe|ssh|ssh-install|ssh-uninstall> [-f|--file colors.yml] [--dry-run]";
 
 // Walking up means a colour can be run from any subdirectory of a project and
 // still find the one desired state every colour shares.
@@ -29,13 +29,13 @@ export async function run(...input: string[]): Promise<Opts> {
   const command = args[0];
   if (["help", "--help", "-h"].includes(command ?? "")) return { "red/exit": 0, "red/err": usage };
   if (command === "describe") return describeFile(fileFromArgs(args));
-  if (["build", "create", "delete", "ssh"].includes(command ?? "")) return scoped(() => runCli(onceWorkflow, args));
+  if (["build", "create", "delete", "ssh", "ssh-install", "ssh-uninstall"].includes(command ?? "")) return scoped(() => runCli(onceWorkflow, args));
   return { "red/exit": 2, "red/err": usage };
 }
 
 export async function exec(args: string[] = Bun.argv.slice(2)): Promise<never> {
   const command = args[0];
-  if (["build", "create", "delete", "ssh"].includes(command ?? "")) {
+  if (["build", "create", "delete", "ssh", "ssh-install", "ssh-uninstall"].includes(command ?? "")) {
     const result = await run(...args);
     if (result["red/err"]) console.error(result["red/err"]);
     return process.exit(result["red/exit"] ?? 0);

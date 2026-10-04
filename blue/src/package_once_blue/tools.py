@@ -334,6 +334,9 @@ async def ansible_remote_step(opts: dict) -> dict:
 
 async def ansible_local_step(opts: dict) -> dict:
     dir, data = tool_dir(opts, "ansible-local"), _data(opts)
+    identity = await access.installed_identity(opts) if opts.get("blue/event") != "delete" else None
+    if opts.get("blue/event") == "delete" and not machine.planning(opts):
+        access.install_lock(opts)
     specs = [
         _spec(_template("tools/ansible-local/ansible.cfg"), f"{dir}/ansible.cfg", data),
         _spec(_template("tools/ansible-local/inventory.ini"), f"{dir}/inventory.ini", data),
@@ -341,5 +344,7 @@ async def ansible_local_step(opts: dict) -> dict:
     ]
     return await ansible_with_spec(opts, specs, dir=dir, inventory="inventory.ini", playbooks={"create": "main.yml", "delete": "main.yml"}, extra_vars={
         "host_alias": data.get("profile"),
+        "ssh_installed": bool(identity),
+        "ssh_identity_file": identity or "",
         "ssh_hosts": [{"name": data.get("profile"), "ip": data.get("ip"), "user": data.get("user"), "identity_file": data.get("ssh-private-key-path")}],
         "block_state": "absent" if opts.get("blue/event") == "delete" else "present"})

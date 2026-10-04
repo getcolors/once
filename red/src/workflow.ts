@@ -62,6 +62,7 @@ export async function startStep(
     ],
     afterValidate: async (opts, _env, ctx) => {
       if (ctx.event === "build") opts = {...opts, workdir: String(opts.workdir ?? ".colors") + "/build"};
+      if (ctx.event === "ssh-uninstall") return opts;
       opts = await access.resourceStep(opts);
       if (failed(opts)) return opts;
       opts = await access.registrationStep(opts);
@@ -74,7 +75,7 @@ export async function startStep(
         opts = await machine.load(opts, _env);
         if (failed(opts)) return opts;
       }
-      if (ctx.event === 'ssh') {
+      if (['ssh','ssh-install'].includes(String(ctx.event))) {
         opts = await access.connectionStep(opts);
         if (failed(opts)) return opts;
       }
@@ -91,9 +92,14 @@ export async function ansibleCleanupStep(opts: Opts): Promise<Opts> {
 }
 
 export const tofuSteps = ["once/tofu-compute", "once/tofu-smtp", "once/tofu-dns", "once/tofu-smtp-post"];
-export const sideEffectingSteps = [...tofuSteps, "once/ansible-local", "once/ansible-remote", "once/ansible-cleanup", "once/github", "once/ssh-cleanup", "once/registration-delete", "once/ssh"];
+export const sideEffectingSteps = [...tofuSteps, "once/ansible-local", "once/ansible-remote", "once/ansible-cleanup", "once/github", "once/ssh-cleanup", "once/registration-delete", "once/ssh", "once/ssh-install", "once/ssh-uninstall"];
 
 export function wireFn(step: string, runOpts: Opts) {
+  if (["ssh-install", "ssh-uninstall"].includes(String(runOpts["red/event"]))) {
+    const command = String(runOpts["red/event"]);
+    if (step === "once/start") return [startStep, "once/"+command] as const;
+    if (step === "once/"+command) return [command === "ssh-install" ? access.installStep : access.uninstallStep] as const;
+  }
   if (runOpts["red/event"] === "ssh") {
     if (step === "once/start") return [startStep, "once/ssh"] as const;
     if (step === "once/ssh") return [access.sshStep] as const;
