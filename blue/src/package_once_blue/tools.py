@@ -269,6 +269,11 @@ def _resolve_env(env: Any) -> Any:
     return [f"{name}={_par_lookup(str(key))}" for name, key in env.items()] if isinstance(env, dict) else env
 
 
+def deploy_policy(opts: dict) -> str:
+    once = opts.get("once") or {}
+    return json.dumps([{"host": app["host"], "image": app["image"], "strategy": app.get("deploy-strategy", "rolling"), "timeout": int(app.get("deploy-stop-timeout", 300)), "namespace": once.get("namespace", "once")} for app in once.get("applications", [])], separators=(",", ":"), ensure_ascii=False) + "\n"
+
+
 def ansible_once(opts: dict) -> str:
     smtp = {key: opts.get(key) for key in ["smtp_server", "smtp_port", "smtp_username", "smtp_password"]}
     password_key = {"resend": "resend-password", "no-infra": "no-infra-smtp-password"}.get(opts.get("provider-smtp") or "resend")
@@ -279,10 +284,15 @@ def ansible_once(opts: dict) -> str:
     for app in once.get("applications", []):
         # github never reaches the host. It says where the deploy credentials are
         # published, which is no business of the module reconciling containers.
-        without_github = {k: v for k, v in app.items() if k != "github"}
+        without_github = {k: v for k, v in app.items() if k not in ("github", "deploy-strategy", "deploy-stop-timeout", "smtp")}
         configured = {**without_github, **smtp, "smtp_from": f"Info <info@notifications.{registrable_domain(app['host'])}>"}
+        if app.get("smtp") is False:
+            for key in ("smtp_server", "smtp_port", "smtp_username", "smtp_password", "smtp_from"):
+                configured.pop(key, None)
         if isinstance(app.get("env"), dict):
             configured["env"] = _resolve_env(app["env"])
+        if app.get("deploy-strategy") == "stop-first":
+            configured["auto_update"] = False
         apps.append(configured)
     return _yaml([{"name": "Reconcile ONCE applications", "become": True, "once": {**once, "applications": apps}}])
 
@@ -311,6 +321,8 @@ def _remote_specs(opts: dict) -> list[dict]:
         _spec(_template("tools/ansible/main.yml"), f"{dir}/main.yml", data),
         _spec(_template("tools/ansible/files/authorized-keys"), f"{dir}/files/authorized-keys", data),
         _raw_spec(f"{dir}/deploy_keys", deploy_keys_content(opts)),
+        _raw_spec(f"{dir}/deploy-policy.json", deploy_policy(opts)),
+        _spec(_template("tools/ansible/files/deploy-app"), f"{dir}/files/deploy-app", data),
         _spec(_template("tools/ansible/files/deploy"), f"{dir}/files/deploy", data),
         _spec(_template("tools/ansible/library/once"), f"{dir}/library/once", data),
         _raw_spec(f"{dir}/inventory.json", inventory(data)),

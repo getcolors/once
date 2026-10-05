@@ -6,15 +6,21 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
-    runs-on: [self-hosted, Linux, ARM64]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Install pinned devenv
+        run: nix profile install --accept-flake-config github:cachix/devenv/b904dcb51fe48c30db250038241507f60752f222 # v2.4.0
       - name: Green tests
         run: devenv shell bash -lc 'cd green && clojure -X:test'
       - name: Red tests and typecheck
@@ -28,9 +34,11 @@ jobs:
 
   tag:
     needs: test
-    runs-on: [self-hosted, Linux, ARM64]
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
       - name: Create and push tag

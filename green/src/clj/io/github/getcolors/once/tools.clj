@@ -338,12 +338,23 @@
     ;; published, which is no business of the module reconciling containers, and
     ;; a ninth key here also tips a Clojure map out of insertion order and away
     ;; from the byte parity the other colours hold to.
-    (cond-> (merge (dissoc app :github) smtp)
-      (map? (:env app)) (assoc :env (resolve-env (:env app))))))
+    (cond-> (merge (dissoc app :github :deploy-strategy :deploy-stop-timeout :smtp) smtp)
+      (false? (:smtp app)) (dissoc :smtp_server :smtp_port :smtp_username :smtp_password :smtp_from)
+      (map? (:env app)) (assoc :env (resolve-env (:env app)))
+      (= "stop-first" (:deploy-strategy app)) (assoc :auto_update false))))
 
 (def ^:private smtp-password-keys
   {"resend" :resend-password
    "no-infra" :no-infra-smtp-password})
+
+(defn deploy-policy [opts]
+  (str (json/generate-string
+        (mapv (fn [app]
+                {:host (:host app) :image (:image app)
+                 :strategy (get app :deploy-strategy "rolling")
+                 :timeout (long (get app :deploy-stop-timeout 300))
+                 :namespace (get-in opts [:once :namespace] "once")})
+              (get-in opts [:once :applications]))) "\n"))
 
 (defn ansible-once
   [{:keys [once provider-smtp] :as opts}]
@@ -393,6 +404,9 @@
                     (str dir "/files/authorized-keys")
                     data)
      (raw-spec (str dir "/deploy_keys") (deploy-keys-content opts))
+     (raw-spec (str dir "/deploy-policy.json") (deploy-policy opts))
+     (template-spec (static-template "ansible" "files/deploy-app")
+                    (str dir "/files/deploy-app") data)
      (template-spec (static-template "ansible" "main.yml")
                     (str dir "/main.yml")
                     data)

@@ -25,33 +25,11 @@
 
 (def host-pattern #"^[A-Za-z0-9]([A-Za-z0-9.-]{0,253}[A-Za-z0-9])?$")
 
-(defn strip-ansi [s]
-  (-> s
-      (str/replace #"\x1b\]8;[^\x07]*\x07" "")
-      (str/replace #"\x1b\[[0-9;]*m" "")))
-
-(defn parse-allowed-hosts []
-  (let [{:keys [exit out err]} @(p/process ["sudo" "once" "list"]
-                                           {:out :string :err :string})]
-    (when-not (zero? exit)
-      (die (str "could not list applications: " (str/trim err))))
-    (->> (str/split-lines (strip-ansi out))
-         (keep #(re-find #"[\w][\w.-]+\.[\w]{2,}(?= \()" %))
-         set)))
-
-(defn update-host
-  "Update one host. Returns true on success. A host in this key's entry that
-  ONCE does not serve is a failure for that host and not for the others: the
-  run reports it and carries on, so one missing application cannot stop the
-  rest of the repository from deploying."
-  [allowed host]
-  (if-not (contains? allowed host)
-    (do (warn (str "host not served by once: " host)) false)
-    (let [{:keys [exit]} @(p/process ["sudo" "once" "update" host]
-                                     {:out :inherit :err :inherit})]
-      (when-not (zero? exit)
-        (warn (str "once update failed for " host)))
-      (zero? exit))))
+(defn update-host [host]
+  (let [{:keys [exit]} @(p/process ["sudo" "/usr/local/bin/once-deploy-app" host]
+                                  {:out :inherit :err :inherit})]
+    (when-not (zero? exit) (warn (str "once update failed for " host)))
+    (zero? exit)))
 
 (defn -main [& args]
   ;; The permitted hosts arrive from the authorized_keys entry, not from the
@@ -71,8 +49,7 @@
       (warn "ignoring the requested command; this key updates its own hosts"))
     ;; mapv, not remove: these calls have side effects and must all run, in
     ;; order, before anything looks at the results.
-    (let [allowed (parse-allowed-hosts)
-          results (mapv (fn [host] [host (update-host allowed host)]) permitted)
+    (let [results (mapv (fn [host] [host (update-host host)]) permitted)
           failed (mapv first (remove second results))]
       (when (seq failed)
         (die (str "failed: " (str/join " " failed))))

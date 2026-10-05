@@ -183,10 +183,10 @@
         state: present
       become: yes
 
-    - name: Grant deploy NOPASSWD sudo for once
+    - name: Grant deploy NOPASSWD sudo only for policy dispatcher
       ansible.builtin.copy:
         dest: /etc/sudoers.d/deploy
-        content: "deploy ALL=(ALL) NOPASSWD: /usr/local/bin/once *\n"
+        content: "deploy ALL=(ALL) NOPASSWD: /usr/local/bin/once-deploy-app *\n"
         owner: root
         group: root
         mode: "0440"
@@ -229,6 +229,36 @@
         mode: "0755"
       become: yes
 
+    - name: Install root-owned deployment policy helper
+      ansible.builtin.copy:
+        src: files/deploy-app
+        dest: /usr/local/bin/once-deploy-app
+        owner: root
+        group: root
+        mode: "0755"
+      become: yes
+
+    - name: Create durable deployment recovery directory
+      ansible.builtin.file:
+        path: /var/lib/once-deploy
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      become: yes
+
+    - name: Install non-secret deployment policy
+      ansible.builtin.copy:
+        src: deploy-policy.json
+        dest: /etc/once/deploy-policy.json
+        owner: root
+        group: root
+        mode: "0644"
+      become: yes
+
+    - name: Import ONCE tasks before publishing deployment access
+      import_tasks: once.yml
+
     # Only this generation's keys are rendered, so the artifact stays a pure
     # function of desired state. Retaining the previous generation is the
     # reconciler's job, on the box, where the previous keys actually are.
@@ -258,6 +288,3 @@
         group: deploy
         mode: "0600"
       become: yes
-
-    - name: Import ONCE tasks
-      import_tasks: once.yml

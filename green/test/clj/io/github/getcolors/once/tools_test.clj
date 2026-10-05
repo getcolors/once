@@ -442,3 +442,17 @@
         (is (= "TXT" (get record "type")))
         (is (= "\"v=DMARC1; p=none; rua=mailto:reports@example.com\"" (if (= provider "cloudflare") (get record "content") (first (get record "data"))))))
       (is (not (str/includes? (tools/render-fn :smtp data) "DMARC"))))))
+
+(deftest application-smtp-optout-keeps-environment-and-omits-mail-settings
+  (doseq [provider ["resend" "no-infra"]]
+    (let [opts (once-opts provider "synthetic-smtp-secret")
+          inherited (tools/ansible-once opts)
+          explicit (tools/ansible-once (assoc-in opts [:once :applications 0 :smtp] true))
+          disabled (tools/ansible-once
+                    (-> opts
+                        (assoc-in [:once :applications 0 :smtp] false)
+                        (assoc-in [:once :applications 0 :env] {"TOKEN" :app-token}))) ]
+      (is (= inherited explicit))
+      (is (not (re-find #"(?m)^\s+smtp(?:_|:)" disabled)))
+      (is (str/includes? disabled "ONCE_PAR_APP_TOKEN"))
+      (is (not (str/includes? disabled "synthetic-smtp-secret"))))))

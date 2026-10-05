@@ -7,6 +7,7 @@ compute-api-version: 2
 once:
   applications:
     - host: www.example.com
+      smtp: true
       image: ghcr.io/example/site:latest
       github: example/site
       env:
@@ -14,7 +15,12 @@ once:
     # Same image, same repository, second host. Deploy keys are per repository,
     # so this and www.example.com share one key whose ForceCommand names both —
     # the case that has to render identically in all three colours.
+    # The second application must receive no SMTP or generated sender settings.
     - host: www.example.net
+      smtp: false
+      deploy-strategy: stop-first
+      deploy-stop-timeout: 120
+      auto_update: false
       image: ghcr.io/example/site:latest
       github: example/site
 provider-compute: digitalocean

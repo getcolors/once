@@ -92,6 +92,7 @@
     (:smtp_password app) (into ["--smtp-password" (:smtp_password app)])
     (:smtp_from app)     (into ["--smtp-from"     (:smtp_from app)])
     (:auto_update app)   (conj "--auto-update")
+    (false? (:auto_update app)) (conj "--auto-update=false")
     (:auto_backup app)   (conj "--auto-backup")
     (:backup_path app)   (into ["--backup-path"   (:backup_path app)])
     (:disable_tls app)   (conj "--disable-tls")

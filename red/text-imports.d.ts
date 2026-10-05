@@ -3,6 +3,7 @@ declare module "*.yml" { const content: string; export default content; }
 declare module "*.cfg" { const content: string; export default content; }
 declare module "*.ini" { const content: string; export default content; }
 declare module "*/raw" { const content: string; export default content; }
+declare module "*/deploy-app" { const content: string; export default content; }
 declare module "*/deploy" { const content: string; export default content; }
 declare module "*/authorized-keys" { const content: string; export default content; }
 declare module "*/once" { const content: string; export default content; }

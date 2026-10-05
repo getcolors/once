@@ -223,7 +223,9 @@
     "ansible-local/ansible.cfg" "ansible-local/inventory.ini" "ansible-local/main.yml"
     "ansible-remote/ansible.cfg" "ansible-remote/main.yml"
     "ansible-remote/inventory.json" "ansible-remote/once.yml"
-    "ansible-remote/files/deploy" "ansible-remote/files/authorized-keys"
+    "ansible-remote/files/deploy"
+     "ansible-remote/files/deploy-app"
+     "ansible-remote/deploy-policy.json" "ansible-remote/files/authorized-keys"
     "ansible-remote/deploy_keys" "ansible-remote/library/once"})
 
 (deftest a-build-renders-the-whole-tree-and-runs-no-tool
