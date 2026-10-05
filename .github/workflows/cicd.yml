@@ -19,7 +19,7 @@ jobs:
           persist-credentials: false
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
       - name: Install pinned devenv
-        run: nix profile install github:cachix/devenv/b904dcb51fe48c30db250038241507f60752f222 # v2.4.0
+        run: nix profile install --accept-flake-config github:cachix/devenv/b904dcb51fe48c30db250038241507f60752f222 # v2.4.0
       - name: Green tests
         run: devenv shell bash -lc 'cd green && clojure -X:test'
       - name: Red tests and typecheck
