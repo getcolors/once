@@ -29,6 +29,7 @@ provider-dns: no-infra
 once:
   applications:
   - host: wiki-v2.pocketcontext.com
+    # smtp: false omits generated mail settings on new deployments; existing apps need an operator update.
     image: ghcr.io/pocketcontext/wikicontext-v2:latest
     deploy-strategy: stop-first
     deploy-stop-timeout: 300

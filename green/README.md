@@ -411,3 +411,18 @@ Run `python3 -B -m unittest discover -s test/deploy` and the disposable real-Doc
 check `python3 -B scripts/test-stop-first-docker.py --image <local-shell-image> --sudo`
 from the repository root. The Docker check simulates registry and ONCE orchestration;
 it does not replace a live ONCE/proxy deployment test.
+
+## Per-application SMTP
+
+Set `smtp: false` on an entry in `once.applications` to omit all generated SMTP
+settings, including the sender address, for that application. Omitted `smtp`
+and `smtp: true` retain the existing behavior; only booleans are accepted.
+Explicit application environment variables are preserved.
+
+This controls new application deployment. The Ansible module reconciles hosts,
+not settings of existing applications. Adopting it on an existing app requires
+a locked operator update that clears its ONCE SMTP fields and any explicit
+SMTP environment overrides, plus disabling SMTP in the application's persisted
+settings if previously enabled. Setting `smtp: false` alone does not disable
+an existing service. Global SMTP provider validation, credentials, domain
+provisioning and DNS remain unchanged, even when all applications opt out.

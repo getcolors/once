@@ -298,8 +298,10 @@ function applicationData(smtp: any, app: any): any {
   const zone = registrableDomain(app.host);
   // github never reaches the host. It says where the deploy credentials are
   // published, which is no business of the module reconciling containers.
-  const { github: _github, "deploy-strategy": _strategy, "deploy-stop-timeout": _timeout, ...rest } = app;
-  return { ...rest, ...smtp, smtp_from: `Info <info@notifications.${zone}>`, ...(app.env && !Array.isArray(app.env) && typeof app.env === "object" ? { env: resolveEnv(app.env) } : {}), ...(app["deploy-strategy"] === "stop-first" ? {auto_update: false} : {}) };
+  const { github: _github, smtp: _smtp, "deploy-strategy": _strategy, "deploy-stop-timeout": _timeout, ...rest } = app;
+  const configured: any = { ...rest, ...smtp, smtp_from: `Info <info@notifications.${zone}>`, ...(app.env && !Array.isArray(app.env) && typeof app.env === "object" ? { env: resolveEnv(app.env) } : {}), ...(app["deploy-strategy"] === "stop-first" ? {auto_update: false} : {}) };
+  if (app.smtp === false) for (const key of ["smtp_server", "smtp_port", "smtp_username", "smtp_password", "smtp_from"]) delete configured[key];
+  return configured;
 }
 
 export function deployPolicy(opts: Opts): string {

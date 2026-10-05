@@ -220,3 +220,24 @@ def test_dmarc_renders_one_sender_domain_record_per_zone_without_changing_provid
                     assert record["name"] == f"_dmarc.notifications.{domain['zone']}" + ("." if provider == "yandex" else "")
                     value = f'"v=DMARC1; p={policy}' + (f"; rua=mailto:{rua}" if rua else "") + '"'
                     assert (record["content"] if provider == "cloudflare" else record["data"][0]) == value
+
+
+def test_application_smtp_optout_retains_environment_and_default_behavior():
+    import re
+    for provider in ("resend", "no-infra"):
+        app = {"host": "wiki.example.com", "image": "example/wiki", "env": {"TOKEN": "app-token"}}
+        opts = {"provider-smtp": provider, "smtp_server": "smtp.example.com", "smtp_port": 587,
+                "smtp_username": "user", "smtp_password": "synthetic-smtp-secret", "once": {"applications": [app]}}
+        assert ansible_once({**opts, "once": {"applications": [{**app, "smtp": True}]}}) == ansible_once(opts)
+        rendered = ansible_once({**opts, "once": {"applications": [{**app, "smtp": False}]}})
+        assert not re.search(r"^\s+smtp(?:_|:)", rendered, re.M)
+        assert "ONCE_PAR_APP_TOKEN" in rendered
+        assert "synthetic-smtp-secret" not in rendered
+
+
+def test_application_smtp_accepts_only_booleans():
+    for smtp in (False, True):
+        assert state_errors({**valid, "once": {"applications": [{**valid["once"]["applications"][0], "smtp": smtp}]}}) == []
+    for smtp in (None, "false", "true", 0, 1, [], {}):
+        assert "application smtp must be boolean" in state_errors(
+            {**valid, "once": {"applications": [{**valid["once"]["applications"][0], "smtp": smtp}]}})

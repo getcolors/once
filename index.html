@@ -829,6 +829,7 @@ COLORS_PAR_DIGITALOCEAN_SIZE=s-2vcpu-2gb ./green create --dry-run</code></pre>
             <tr><td><code>image</code></td><td>Required container image reference.</td></tr>
             <tr><td><code>env</code></td><td>Map of container variable names to the <code>colors.yml</code> keys holding their values.</td></tr>
             <tr><td><code>auto_update</code></td><td>Enable ONCE automatic image updates.</td></tr>
+            <tr><td><code>smtp</code></td><td>Optional boolean. Set <code>false</code> to omit generated SMTP settings and sender address for this application; omitted or <code>true</code> preserves the default.</td></tr>
             <tr><td><code>auto_backup</code></td><td>Enable ONCE automatic backups.</td></tr>
             <tr><td><code>backup_path</code></td><td>Set the application backup path.</td></tr>
             <tr><td><code>disable_tls</code></td><td>Disable ONCE-managed TLS for the application.</td></tr>
@@ -1010,6 +1011,7 @@ oci-boot-volume-vpus-per-gb: 30
 
     <section id="smtp-providers">
       <h2 class="anchor-heading"><a href="#smtp-providers" aria-label="Link to SMTP providers">#</a>SMTP providers</h2>
+      <p>Per-application <code>smtp: false</code> omits generated SMTP fields for new deployments while preserving explicit environment variables. Existing applications need a locked operator update to clear ONCE SMTP settings and explicit overrides, and application-level SMTP must be disabled separately if previously enabled. Host reconciliation does not update existing application settings. Global provider validation, credentials, domain provisioning and DNS remain unchanged, even when every application opts out.</p>
 
       <h3>Resend</h3>
       <pre><code class="language-yaml">provider-smtp: resend</code></pre>

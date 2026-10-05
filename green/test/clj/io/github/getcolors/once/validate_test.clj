@@ -205,3 +205,10 @@
     (is (some #{"smtp-dmarc-rua requires smtp-dmarc-policy"} (sut/state-errors (assoc opts :smtp-dmarc-rua "reports@example.com"))))
     (doseq [rua [nil false "" "a@b.com\n" "a@b.com; p=reject" "mailto:a@b.com" "a@b.com,c@d.com" "${report}@example.com" "%{report}@example.com"]]
       (is (some #{"smtp-dmarc-rua must be a single email address"} (sut/state-errors (assoc opts :smtp-dmarc-policy "none" :smtp-dmarc-rua rua)))))))
+
+(deftest application-smtp-requires-a-boolean
+  (doseq [value [true false]]
+    (is (empty? (sut/state-errors (assoc-in valid [:once :applications 0 :smtp] value)))))
+  (doseq [value [nil "false" "true" 0 1 [] {}]]
+    (is (some #{"application smtp must be boolean"}
+              (sut/state-errors (assoc-in valid [:once :applications 0 :smtp] value))))))

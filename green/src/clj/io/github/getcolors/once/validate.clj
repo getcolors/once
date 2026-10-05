@@ -99,8 +99,10 @@
 (defn- app-errors
   [applications]
   (mapcat
-   (fn [[idx {:keys [host image env github deploy-strategy deploy-stop-timeout auto_update] :as app}]]
+   (fn [[idx {:keys [host image env github smtp deploy-strategy deploy-stop-timeout auto_update] :as app}]]
      (concat
+      (when (and (contains? app :smtp) (not (boolean? smtp)))
+        ["application smtp must be boolean"])
       (when (and (contains? app :deploy-strategy) (not (contains? #{"rolling" "stop-first"} deploy-strategy)))
         ["deploy-strategy must be rolling or stop-first"])
       (when (and (contains? app :deploy-stop-timeout)

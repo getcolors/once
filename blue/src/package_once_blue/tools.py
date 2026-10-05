@@ -284,8 +284,11 @@ def ansible_once(opts: dict) -> str:
     for app in once.get("applications", []):
         # github never reaches the host. It says where the deploy credentials are
         # published, which is no business of the module reconciling containers.
-        without_github = {k: v for k, v in app.items() if k not in ("github", "deploy-strategy", "deploy-stop-timeout")}
+        without_github = {k: v for k, v in app.items() if k not in ("github", "deploy-strategy", "deploy-stop-timeout", "smtp")}
         configured = {**without_github, **smtp, "smtp_from": f"Info <info@notifications.{registrable_domain(app['host'])}>"}
+        if app.get("smtp") is False:
+            for key in ("smtp_server", "smtp_port", "smtp_username", "smtp_password", "smtp_from"):
+                configured.pop(key, None)
         if isinstance(app.get("env"), dict):
             configured["env"] = _resolve_env(app["env"])
         if app.get("deploy-strategy") == "stop-first":

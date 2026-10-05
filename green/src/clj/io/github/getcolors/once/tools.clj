@@ -338,7 +338,8 @@
     ;; published, which is no business of the module reconciling containers, and
     ;; a ninth key here also tips a Clojure map out of insertion order and away
     ;; from the byte parity the other colours hold to.
-    (cond-> (merge (dissoc app :github :deploy-strategy :deploy-stop-timeout) smtp)
+    (cond-> (merge (dissoc app :github :deploy-strategy :deploy-stop-timeout :smtp) smtp)
+      (false? (:smtp app)) (dissoc :smtp_server :smtp_port :smtp_username :smtp_password :smtp_from)
       (map? (:env app)) (assoc :env (resolve-env (:env app)))
       (= "stop-first" (:deploy-strategy app)) (assoc :auto_update false))))
 

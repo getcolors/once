@@ -191,3 +191,26 @@ test("DMARC renders one sender-domain record per zone without changing provider 
     }
   }
 });
+
+test("per-application SMTP opt-out retains environment and default behavior", () => {
+  for (const provider of ["resend", "no-infra"]) {
+    const app = {host: "wiki.example.com", image: "example/wiki", env: {TOKEN: "app-token"}};
+    const opts = {"provider-smtp": provider, smtp_server: "smtp.example.com", smtp_port: 587,
+      smtp_username: "user", smtp_password: "synthetic-smtp-secret", once: {applications: [app]}};
+    expect(ansibleOnce({...opts, once: {applications: [{...app, smtp: true}]}})).toBe(ansibleOnce(opts));
+    const rendered = ansibleOnce({...opts, once: {applications: [{...app, smtp: false}]}});
+    expect(rendered).not.toMatch(/^\s+smtp(?:_|:)/m);
+    expect(rendered).toContain("ONCE_PAR_APP_TOKEN");
+    expect(rendered).not.toContain("synthetic-smtp-secret");
+  }
+});
+
+test("application SMTP accepts only booleans", () => {
+  for (const smtp of [false, true]) {
+    expect(stateErrors({...valid, once: {applications: [{...valid.once.applications[0], smtp}]}})).toEqual([]);
+  }
+  for (const smtp of [null, "false", "true", 0, 1, [], {}]) {
+    expect(stateErrors({...valid, once: {applications: [{...valid.once.applications[0], smtp}]}}))
+      .toContain("application smtp must be boolean");
+  }
+});
