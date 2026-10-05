@@ -10,11 +10,16 @@ permissions:
 jobs:
   test:
     if: github.event_name == 'push' && github.ref == 'refs/heads/experiment/stop-first'
-    runs-on: [self-hosted, Linux, ARM64]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Install pinned devenv
+        run: nix profile install github:cachix/devenv/b904dcb51fe48c30db250038241507f60752f222 # v2.4.0
       - name: Green tests
         run: devenv shell bash -lc 'cd green && clojure -X:test'
       - name: Red tests and typecheck
