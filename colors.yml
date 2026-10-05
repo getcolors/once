@@ -1,48 +1,56 @@
-# New ONCE v2 deployment. Existing deployments retain their pinned launchers.
-# Runtime bindings are loaded from .envrc.private; OCI authenticates via ~/.oci/config.
-profile: once-oracle-ampere
+# Safe experiment template. Use -f colors-once-v2.yml for the local configuration.
+profile: once-v2
 workdir: .colors
 compute-api-version: 2
-
+provider-compute: oci
+compute-prevent-destroy: true
+compute-require-existing-state: false
+oci-config-file-profile: oracle-ampere-2
+oci-compartment-id: REPLACE_WITH_OCI_COMPARTMENT_ID
+oci-subnet-id: REPLACE_WITH_OCI_SUBNET_ID
+oci-availability-domain: REPLACE_WITH_OCI_AVAILABILITY_DOMAIN
+oci-shape: VM.Standard.A1.Flex
+oci-ocpus: 1
+oci-memory-in-gbs: 6
+oci-boot-volume-size-in-gbs: 50
+oci-boot-volume-vpus-per-gb: 30
+compute-ssh-sources:
+- 0.0.0.0/0
+compute-http-sources:
+- 0.0.0.0/0
+r2-endpoint: REPLACE_WITH_R2_ENDPOINT
+provider-backend: r2
+r2-bucket: once-v2-state
+provider-smtp: no-infra
+no-infra-smtp-server: smtp.resend.com
+no-infra-smtp-port: 587
+no-infra-smtp-username: resend
+provider-dns: no-infra
 once:
   applications:
-    - host: www.getcolors.ai
-      image: ghcr.io/getcolors/colors-website:latest
-      github: getcolors/colors-website
-    - host: getcolors.ai
-      image: ghcr.io/getcolors/colors-redirect:latest
-      github: getcolors/colors-redirect
-    - host: bigconfig.ai
-      image: ghcr.io/getcolors/colors-redirect:latest
-      github: getcolors/colors-redirect
-    - host: www.bigconfig.ai
-      image: ghcr.io/getcolors/colors-redirect:latest
-      github: getcolors/colors-redirect
-    - host: marketplace.bigconfig.ai
-      image: ghcr.io/getcolors/colors-redirect:latest
-      github: getcolors/colors-redirect
-
-provider-compute: oci
-provider-smtp: resend
-provider-dns: cloudflare
-provider-backend: r2
-compute-prevent-destroy: true
-compute-ssh-sources: ["0.0.0.0/0"]
-compute-http-sources: ["0.0.0.0/0"]
-
-oci-config-file-profile: once-oracle-ampere
-# OCI placement: public subnet-ampere, root compartment, Frankfurt AD-1.
-oci-subnet-id: ocid1.subnet.oc1.eu-frankfurt-1.aaaaaaaaotya32pihejgi25vrdfnjda3qg52kpsjnd7od5oiqifbsi4rqqma
-oci-compartment-id: ocid1.tenancy.oc1..aaaaaaaal4wmmpzv2fzkdz2vrfdizywgzjid6dqlgcankrrr7jyydo7ozb3a
-oci-availability-domain: xTQn:EU-FRANKFURT-1-AD-1
-oci-shape: VM.Standard.A1.Flex
-oci-ocpus: 2
-oci-memory-in-gbs: 12
-oci-boot-volume-size-in-gbs: 200
-oci-boot-volume-vpus-per-gb: 30
-# Omit oci-image-id to discover Ubuntu 24.04 for A1 on first create.
-# Pin the resulting image OCID before subsequent creates to avoid replacement.
-
-# State is stored under the once-oracle-ampere prefix in this bucket.
-r2-bucket: once-oracle-ampere-state
-r2-endpoint: https://319271fed8bc6d2d9059362be1165f37.eu.r2.cloudflarestorage.com
+  - host: wiki-v2.pocketcontext.com
+    image: ghcr.io/pocketcontext/wikicontext-v2:latest
+    deploy-strategy: stop-first
+    deploy-stop-timeout: 300
+    auto_update: false
+    cpus: 1
+    memory: 512
+    env:
+      WIKICONTEXT_SUPERUSER_EMAIL: app-wikicontext-v2-wikicontext-superuser-email
+      WIKICONTEXT_SUPERUSER_PASSWORD: app-wikicontext-v2-wikicontext-superuser-password
+      LITESTREAM_ENDPOINT: app-wikicontext-v2-litestream-endpoint
+      LITESTREAM_BUCKET: app-wikicontext-v2-litestream-bucket
+      LITESTREAM_PATH: app-wikicontext-v2-litestream-path
+      LITESTREAM_REGION: app-wikicontext-v2-litestream-region
+      LITESTREAM_ACCESS_KEY_ID: app-wikicontext-v2-litestream-access-key-id
+      LITESTREAM_SECRET_ACCESS_KEY: app-wikicontext-v2-litestream-secret-access-key
+      WIKICONTEXT_S3_ENDPOINT: app-wikicontext-v2-wikicontext-s3-endpoint
+      WIKICONTEXT_S3_BUCKET: app-wikicontext-v2-wikicontext-s3-bucket
+      WIKICONTEXT_S3_REGION: app-wikicontext-v2-wikicontext-s3-region
+      WIKICONTEXT_S3_ACCESS_KEY_ID: app-wikicontext-v2-wikicontext-s3-access-key-id
+      WIKICONTEXT_S3_SECRET_ACCESS_KEY: app-wikicontext-v2-wikicontext-s3-secret-access-key
+      WIKICONTEXT_GOOGLE_WORKSPACE_DOMAIN: app-wikicontext-v2-wikicontext-google-workspace-domain
+      WIKICONTEXT_S3_FORCE_PATH_STYLE: app-wikicontext-v2-wikicontext-s3-force-path-style
+      WIKICONTEXT_GOOGLE_CLIENT_ID: app-wikicontext-v2-wikicontext-google-client-id
+      WIKICONTEXT_GOOGLE_CLIENT_SECRET: app-wikicontext-v2-wikicontext-google-client-secret
+      LITESTREAM_SYNC_INTERVAL: app-wikicontext-v2-sync-interval

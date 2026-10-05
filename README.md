@@ -238,3 +238,51 @@ ONCE also lends downstream Package Skills two library modules in every colour â€
 Generated `.colors/` directories are artifacts and must not be edited as source.
 
 Create and build serialize the package-owned SSH alias stage before remote Ansible. A failed local ownership check stops application convergence; GitHub publication remains after remote convergence.
+
+## Stateful application deployment
+
+Application `deploy-strategy` defaults to `rolling`, preserving ordinary ONCE
+updates for static sites. Set `deploy-strategy: stop-first`,
+`deploy-stop-timeout: 300` (1â€“3600 seconds), and `auto_update: false` for SQLite
+applications. The timeout covers the application supervisor and its final
+replication shutdown, not only the HTTP server.
+
+The SSH forced command invokes a root-owned policy helper. It serializes each
+host with `/run/once-deploy/<host>.lock`, pulls an immutable image digest,
+disables the old container's restart policy, stops it, requires clean exit,
+then runs ONCE update with automatic updates disabled. It verifies the image,
+named volumes, and single replacement container after ONCE readiness succeeds.
+The deploy user has no general ONCE or Docker sudo access. Client-provided SSH
+commands cannot choose the host, image, timeout, namespace, or strategy.
+
+A durable `/var/lib/once-deploy/<host>.pending` marker blocks retries after
+interruption or failure. Inspect the containers, schema and replication before
+removing it as root. There is no automatic rollback: the replacement may already
+have migrated the database. Pull and read-only preflight failures do not create a recovery marker.
+Never restart old application code against a potentially migrated database.
+
+Existing applications with automatic updates enabled are refused by the helper.
+Adoption requires an operator-controlled maintenance window: pause the ONCE
+background updater, stop the old writer, disable automatic updates during its
+controlled replacement, verify there is exactly one writer, then resume the
+background service. Merely adding the YAML flag does not reconcile existing
+ONCE settings. Provisioning does not upgrade existing apps automatically.
+
+All privileged maintenance and environment-update tools must honor the same
+lock and stop-first protocol; direct root ONCE commands can bypass it. Existing
+PocketContext wrappers use different locks and must be adapted before reuse. Locks
+are local to one host. Cross-host migration still requires disabling the source
+writer and its restart/deployment paths before starting the destination.
+A zero process exit is not proof of remote replication durability: applications
+must independently verify actual committed records and file hashes in a restored
+replica before cross-host handover. Litestream 0.5.17 can exit zero after failed
+replication, so its exit status alone is insufficient. Same-host replacement
+retains the named volume and does not restore over its healthy database. This helper does not implement
+distributed fencing or change application backup behavior.
+
+Private registry pulls require root Docker CLI authentication as well as ONCE
+registry credentials. ONCE-only stored credentials do not authenticate the pre-pull.
+Run `python3 -B -m unittest discover -s test/deploy` and the disposable real-Docker
+check `python3 -B scripts/test-stop-first-docker.py --image <local-shell-image> --sudo`
+from the repository root. The Docker check simulates registry and ONCE orchestration;
+it does not replace a live ONCE/proxy deployment test.

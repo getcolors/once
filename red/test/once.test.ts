@@ -119,7 +119,7 @@ test("a build renders the complete production tree without tools", async () => {
   try {
     const result = await scoped(() => runWorkflow(onceWorkflow, { ...valid, workdir, "red/event": "build" }));
     expect(result["red/exit"]).toBe(0);
-    expect(files(join(workdir, "build", "test"))).toHaveLength(24);
+    expect(files(join(workdir, "build", "test"))).toHaveLength(26);
     const repeated = await scoped(() => runWorkflow(onceWorkflow, { ...valid, workdir, "red/event": "build" }));
     expect(repeated["red/exit"]).toBe(0);
   } finally { rmSync(workdir, { recursive: true, force: true }); }

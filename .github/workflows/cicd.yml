@@ -1,15 +1,15 @@
-name: Test, Parity, and Tag
+name: Experiment tests and parity
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
+    branches: [experiment/stop-first]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/experiment/stop-first'
     runs-on: [self-hosted, Linux, ARM64]
     steps:
       - uses: actions/checkout@v5
@@ -25,30 +25,3 @@ jobs:
         run: devenv shell ./scripts/parity.sh
       - name: Launcher resolution
         run: devenv shell ./scripts/launcher.sh
-
-  tag:
-    needs: test
-    runs-on: [self-hosted, Linux, ARM64]
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - name: Create and push tag
-        run: |
-          count=$(git rev-list --count HEAD)
-          tag="1.0.${count}"
-          local_sha=$(git rev-parse HEAD)
-          remote_sha=$(git ls-remote --tags origin "refs/tags/${tag}" | awk '{print $1}')
-          if [ -n "$remote_sha" ]; then
-            if [ "$remote_sha" = "$local_sha" ]; then
-              echo "Tag ${tag} already at ${local_sha}, skipping"
-              exit 0
-            fi
-            # Same revision count, different commit: main's history was
-            # rewritten. Overwriting would silently move a tag someone may
-            # already have pinned, so stop and let a human decide.
-            echo "::error::Tag ${tag} is on origin at ${remote_sha}, but HEAD is ${local_sha}. Refusing to move a published tag."
-            exit 1
-          fi
-          git tag "$tag"
-          git push origin "$tag"

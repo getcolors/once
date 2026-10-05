@@ -116,6 +116,13 @@ def state_errors(opts: dict) -> list[str]:
     if not apps:
         errors.append("once applications must be a non-empty sequence")
     for index, app in enumerate(apps or []):
+        if "deploy-strategy" in app and app["deploy-strategy"] not in ("rolling", "stop-first"):
+            errors.append("deploy-strategy must be rolling or stop-first")
+        timeout = app.get("deploy-stop-timeout")
+        if "deploy-stop-timeout" in app and not (type(timeout) in (int, float) and 1 <= timeout <= 3600 and int(timeout) == timeout):
+            errors.append("deploy-stop-timeout must be an integer from 1 to 3600")
+        if app.get("deploy-strategy") == "stop-first" and app.get("auto_update") is not None and app["auto_update"] is not False:
+            errors.append("stop-first requires auto_update false")
         if placeholder(app.get("host")) or not _domain_re.fullmatch(str(app.get("host"))):
             errors.append(f"once applications[{index}] has an invalid host")
         if placeholder(app.get("image")):

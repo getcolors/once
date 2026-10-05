@@ -15,6 +15,9 @@ once:
     # so this and www.example.com share one key whose ForceCommand names both —
     # the case that has to render identically in all three colours.
     - host: www.example.net
+      deploy-strategy: stop-first
+      deploy-stop-timeout: 120
+      auto_update: false
       image: ghcr.io/example/site:latest
       github: example/site
 provider-compute: digitalocean

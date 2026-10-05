@@ -1,0 +1,164 @@
+#!/usr/bin/python3 -I
+"""Root-owned ONCE deployment policy. Never emit Docker metadata or CLI output."""
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOME": "/root"}
+POLICY = Path("/etc/once/deploy-policy.json")
+LOCKS = Path("/run/once-deploy")
+PENDING = Path("/var/lib/once-deploy")
+HOST = re.compile(r"[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?")
+
+
+def run(*args):
+    result = subprocess.run(args, env=ENV, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True)
+    if result.returncode:
+        raise RuntimeError("deployment subprocess failed; output suppressed")
+    return result.stdout
+
+
+def load_policy(host):
+    stat = POLICY.stat()
+    if stat.st_uid != 0 or stat.st_mode & 0o022:
+        raise RuntimeError("deployment policy must be root-owned and not writable by others")
+    policies = json.loads(POLICY.read_text())
+    matches = [p for p in policies if p.get("host") == host]
+    if len(matches) != 1:
+        raise RuntimeError("host missing or ambiguous in deployment policy")
+    policy = matches[0]
+    if policy.get("strategy") not in ("rolling", "stop-first"):
+        raise RuntimeError("invalid deployment strategy")
+    if type(policy.get("timeout")) is not int or not 1 <= policy["timeout"] <= 3600:
+        raise RuntimeError("invalid stop timeout")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", policy.get("namespace", "")):
+        raise RuntimeError("invalid namespace")
+    if not isinstance(policy.get("image"), str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:/@-]*", policy["image"]):
+        raise RuntimeError("invalid image")
+    return policy
+
+
+def containers(host, namespace):
+    ids = run("docker", "ps", "--all", "--filter", "label=once", "--format", "{{.ID}}").split()
+    # Raw inspect remains only in process memory. Project the exact fields needed.
+    records = json.loads(run("docker", "inspect", *ids)) if ids else []
+    selected = []
+    for c in records:
+        label = json.loads(c.get("Config", {}).get("Labels", {}).get("once", "{}"))
+        if label.get("host") == host:
+            # ONCE v0.3.3 names containers namespace-app-settings.name-<6 hex>.
+            # Checking namespace alone is ambiguous when another namespace begins
+            # with the same text followed by '-app-'. Bind to both label name and
+            # exact random suffix before projecting or stopping any container.
+            name = label.get("name")
+            if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", name):
+                raise RuntimeError("application label has no valid name")
+            expected = re.escape("/" + namespace + "-app-" + name + "-") + r"[0-9a-f]{6}"
+            if not re.fullmatch(expected, c.get("Name", "")):
+                raise RuntimeError("container name does not match configured namespace and application")
+            selected.append({"id": c["Id"], "image": c["Image"], "auto_update": label.get("autoUpdate"),
+                             "state": {k: c["State"].get(k) for k in ("Running", "ExitCode", "OOMKilled")},
+                             "volumes": sorted((m["Name"], m["Destination"]) for m in c.get("Mounts", []) if m["Type"] == "volume"),
+                             "binds": any(m["Type"] == "bind" for m in c.get("Mounts", []))})
+    return selected
+
+
+def only_container(host, namespace):
+    matches = containers(host, namespace)
+    if len(matches) != 1:
+        raise RuntimeError("expected exactly one application container; operator recovery required")
+    return matches[0]
+
+
+def deploy(host, policy, before_stop=lambda: None):
+    ns = policy["namespace"]
+    if policy["strategy"] == "rolling":
+        run("once", "-n", ns, "update", host)
+        return
+    old = only_container(host, ns)
+    if old["auto_update"] is not False:
+        raise RuntimeError("disable existing ONCE automatic updates before adopting stop-first")
+    if not old["state"]["Running"] or not old["volumes"] or old["binds"]:
+        raise RuntimeError("expected a running app with named volumes and no bind mounts")
+    run("docker", "pull", policy["image"])
+    image = json.loads(run("docker", "image", "inspect", policy["image"]))[0]
+    digests = image.get("RepoDigests", [])
+    repository = policy["image"].split("@")[0]
+    if ":" in repository.rsplit("/", 1)[-1]:
+        repository = repository.rsplit(":", 1)[0]
+    def canonical(repo):
+        parts = repo.split("/")
+        if len(parts) == 1:
+            return "docker.io/library/" + repo
+        if "." not in parts[0] and ":" not in parts[0] and parts[0] != "localhost":
+            return "docker.io/" + repo
+        if parts[0] in ("docker.io", "index.docker.io"):
+            return "docker.io/" + ("library/" if len(parts) == 2 else "") + "/".join(parts[1:])
+        return repo
+    matches = [d for d in digests if "@sha256:" in d and canonical(d.split("@")[0]) == canonical(repository)]
+    if len(matches) != 1 or not re.fullmatch(r".+@sha256:[0-9a-f]{64}", matches[0]):
+        raise RuntimeError("could not resolve exactly one immutable image digest")
+    digest = matches[0]
+    before_stop()
+    # Disable reboot/restart recovery before stopping. A failed update stays stopped;
+    # restarting old code after a candidate ran could corrupt migrated application data.
+    run("docker", "update", "--restart=no", old["id"])
+    run("docker", "stop", "--time", str(policy["timeout"]), old["id"])
+    stopped = only_container(host, ns)
+    if stopped["id"] != old["id"] or stopped["state"]["Running"] or stopped["state"]["ExitCode"] != 0 or stopped["state"]["OOMKilled"]:
+        raise RuntimeError("application did not stop cleanly; refusing replacement")
+    run("once", "-n", ns, "update", host, "--image", digest, "--auto-update=false")
+    new = only_container(host, ns)
+    if (new["id"] == old["id"] or not new["state"]["Running"] or new["image"] != image["Id"]
+            or new["auto_update"] is not False or new["volumes"] != old["volumes"] or new["binds"]):
+        raise RuntimeError("replacement verification failed; operator recovery required")
+    # ONCE update returns only after its proxy readiness check succeeds.
+
+
+def main():
+    if os.geteuid() != 0 or len(sys.argv) != 2 or not HOST.fullmatch(sys.argv[1]):
+        raise RuntimeError("expected root invocation with one configured hostname")
+    host = sys.argv[1]
+    LOCKS.mkdir(mode=0o700, exist_ok=True)
+    lock_stat = LOCKS.lstat()
+    if LOCKS.is_symlink() or lock_stat.st_uid != 0 or lock_stat.st_mode & 0o077:
+        raise RuntimeError("lock directory must be private and root-owned")
+    fd = os.open(LOCKS / (host + ".lock"), os.O_CREAT | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        policy = load_policy(host)
+        pending = PENDING / (host + ".pending")
+        if pending.exists():
+            raise RuntimeError("unfinished deployment; operator must inspect before removing pending marker")
+        def mark_pending():
+            # Durable intent survives process termination and host reboot.
+            with pending.open("x") as marker:
+                marker.write("Inspect application, replication and schema before retrying.\n")
+                marker.flush()
+                os.fsync(marker.fileno())
+            directory = os.open(PENDING, os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        deploy(host, policy, before_stop=mark_pending)
+        if policy["strategy"] == "stop-first":
+            pending.unlink()
+        print("deploy: updated " + host)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except RuntimeError as exc:
+        print("deploy: " + str(exc), file=sys.stderr)
+        sys.exit(1)
+    except Exception:
+        # Even JSON/OS exceptions may include secret input; report no exception payload.
+        print("deploy: failed; inspect server privately; no automatic rollback", file=sys.stderr)
+        sys.exit(1)

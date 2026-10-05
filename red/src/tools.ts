@@ -12,6 +12,7 @@ import ansibleLocalInventory from "../resources/tools/ansible-local/inventory.in
 import ansibleLocalMain from "../resources/tools/ansible-local/main.yml" with { type: "text" };
 import ansibleCfg from "../resources/tools/ansible/ansible.cfg" with { type: "text" };
 import authorizedKeys from "../resources/tools/ansible/files/authorized-keys" with { type: "text" };
+import deployApp from "../resources/tools/ansible/files/deploy-app" with { type: "text" };
 import deploy from "../resources/tools/ansible/files/deploy" with { type: "text" };
 import onceModule from "../resources/tools/ansible/library/once" with { type: "text" };
 import ansibleMain from "../resources/tools/ansible/main.yml" with { type: "text" };
@@ -297,8 +298,13 @@ function applicationData(smtp: any, app: any): any {
   const zone = registrableDomain(app.host);
   // github never reaches the host. It says where the deploy credentials are
   // published, which is no business of the module reconciling containers.
-  const { github: _github, ...rest } = app;
-  return { ...rest, ...smtp, smtp_from: `Info <info@notifications.${zone}>`, ...(app.env && !Array.isArray(app.env) && typeof app.env === "object" ? { env: resolveEnv(app.env) } : {}) };
+  const { github: _github, "deploy-strategy": _strategy, "deploy-stop-timeout": _timeout, ...rest } = app;
+  return { ...rest, ...smtp, smtp_from: `Info <info@notifications.${zone}>`, ...(app.env && !Array.isArray(app.env) && typeof app.env === "object" ? { env: resolveEnv(app.env) } : {}), ...(app["deploy-strategy"] === "stop-first" ? {auto_update: false} : {}) };
+}
+
+export function deployPolicy(opts: Opts): string {
+  const once: any = opts.once ?? {};
+  return JSON.stringify((once.applications ?? []).map((app: any) => ({host: app.host, image: app.image, strategy: app["deploy-strategy"] ?? "rolling", timeout: app["deploy-stop-timeout"] ?? 300, namespace: once.namespace ?? "once"}))) + "\n";
 }
 
 export function ansibleOnce(opts: Opts): string {
@@ -337,6 +343,8 @@ function ansibleRemoteSpecs(opts: Opts): Spec[] {
     templateSpec({ name: "tools/ansible/main.yml", content: ansibleMain }, `${dir}/main.yml`, data),
     templateSpec({ name: "tools/ansible/files/authorized-keys", content: authorizedKeys }, `${dir}/files/authorized-keys`, data),
     rawSpec(`${dir}/deploy_keys`, deployKeysContent(opts)),
+    rawSpec(`${dir}/deploy-policy.json`, deployPolicy(opts)),
+    templateSpec({ name: "tools/ansible/files/deploy-app", content: deployApp }, `${dir}/files/deploy-app`, data),
     templateSpec({ name: "tools/ansible/files/deploy", content: deploy }, `${dir}/files/deploy`, data),
     templateSpec({ name: "tools/ansible/library/once", content: onceModule }, `${dir}/library/once`, data),
     rawSpec(`${dir}/inventory.json`, inventory(data)), rawSpec(`${dir}/once.yml`, ansibleOnce(data)),

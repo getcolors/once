@@ -26,7 +26,11 @@
          log       (io/file dir "calls.log")
          list-file (io/file dir "list.output")]
      (spit list-file list-output)
-     (spit sudo "#!/bin/sh\nexec \"$@\"\n")
+     (spit sudo (str "#!/bin/sh\n"
+                     "[ \"$1\" = /usr/local/bin/once-deploy-app ] || exit 2\n"
+                     "echo \"update $2\" >> " (.getAbsolutePath log) "\n"
+                     "[ \"$2\" = \"" (or fail-host "\\0") "\" ] && exit 1\n"
+                     "grep -Fq \"$2\" " (.getAbsolutePath list-file) "\n"))
      (.setExecutable sudo true false)
      (spit once (str "#!/bin/sh\n"
                      "echo \"$@\" >> " (.getAbsolutePath log) "\n"
@@ -110,7 +114,7 @@
         {:keys [exit err]} (run-deploy "" shim ["a.example.com" "bogus.example.com"])
         log (slurp (:log shim))]
     (is (= 1 exit))
-    (is (str/includes? err "host not served by once: bogus.example.com"))
+    (is (str/includes? err "once update failed for bogus.example.com"))
     (is (str/includes? err "failed: bogus.example.com"))
     (is (str/includes? log "update a.example.com")
         "one missing application does not block the rest of the repository")))

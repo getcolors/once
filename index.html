@@ -1617,5 +1617,17 @@ cd blue &amp;&amp; uv run python -m pytest -q
     sections.forEach((section) => observer.observe(section));
   }
 </script>
+<section id="stop-first"><h2>Stateful deployment</h2>
+<p>Set per-application <code>deploy-strategy: stop-first</code>,
+<code>deploy-stop-timeout: 300</code> (1–3600 seconds), and
+<code>auto_update: false</code> for SQLite apps. The default
+<code>rolling</code> preserves normal static-site updates.</p>
+<p>The root-owned helper locks each host, pulls an immutable digest, disables
+old-container restart, requires a clean stop, then verifies the replacement
+image and volume. Failed or interrupted deployments retain a durable recovery
+marker and require operator inspection; no automatic rollback is attempted.
+Existing automatic updates must be disabled in a controlled maintenance window.
+All maintenance paths must share the lock. This is host-local exclusion, not
+cross-host fencing or proof of final remote replication durability.</p></section>
 </body>
 </html>

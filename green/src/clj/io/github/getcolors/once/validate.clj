@@ -99,8 +99,15 @@
 (defn- app-errors
   [applications]
   (mapcat
-   (fn [[idx {:keys [host image env github]}]]
+   (fn [[idx {:keys [host image env github deploy-strategy deploy-stop-timeout auto_update] :as app}]]
      (concat
+      (when (and (contains? app :deploy-strategy) (not (contains? #{"rolling" "stop-first"} deploy-strategy)))
+        ["deploy-strategy must be rolling or stop-first"])
+      (when (and (contains? app :deploy-stop-timeout)
+                 (not (and (number? deploy-stop-timeout) (<= 1 deploy-stop-timeout 3600) (== deploy-stop-timeout (long deploy-stop-timeout)))))
+        ["deploy-stop-timeout must be an integer from 1 to 3600"])
+      (when (and (= "stop-first" deploy-strategy) (not (or (nil? auto_update) (false? auto_update))))
+        ["stop-first requires auto_update false"])
       (when (or (placeholder? host) (not (re-matches domain-re (str host))))
         [(format ":once :applications[%d] has an invalid :host" idx)])
       (when (placeholder? image)

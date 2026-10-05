@@ -220,3 +220,12 @@ bash "$root/scripts/diagnostics-parity.sh"
 # Durable SSH exports and local ownership ordering never reach build artifacts.
 bash "$root/scripts/ssh-install-parity.sh"
 python3 -m unittest discover -s "$root/test/python"
+
+# Deployment policy validation reaches no rendered artifact on invalid input.
+policy="$root/test/parity/deploy-policy.json"
+(cd "$root/green" && bb ../scripts/deploy-policy-green.clj "$policy") >"$tmp/deploy-green"
+(cd "$root/red" && bun ../scripts/deploy-policy-red.ts "$policy") >"$tmp/deploy-red"
+(cd "$root/blue" && uv run python ../scripts/deploy-policy-blue.py "$policy") >"$tmp/deploy-blue"
+diff "$tmp/deploy-green" "$tmp/deploy-red"
+diff "$tmp/deploy-green" "$tmp/deploy-blue"
+python3 -B -m unittest discover -s "$root/test/deploy"

@@ -118,7 +118,7 @@ async def test_dry_run_needs_no_credentials_and_touches_nothing(tmp_path):
 async def test_a_build_renders_the_complete_production_tree_without_tools(tmp_path):
     result = await access.scoped(lambda: run(once_workflow, {**valid, "workdir": str(tmp_path), "blue/event": "build"}))
     assert result["blue/exit"] == 0
-    assert len([path for path in (tmp_path / "build" / "test").rglob("*") if path.is_file()]) == 24
+    assert len([path for path in (tmp_path / "build" / "test").rglob("*") if path.is_file()]) == 26
     before = {str(path.relative_to(tmp_path)): path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
     repeated = await access.scoped(lambda: run(once_workflow, {**valid, "workdir": str(tmp_path), "blue/event": "build"}))
     assert repeated["blue/exit"] == 0
