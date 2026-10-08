@@ -7,7 +7,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "colors-compute-red": "github:getcolors/colors-compute#9ecd0749e9632732f6226d5b73267dcab60c2e09",
+    "colors-compute-red": "github:getcolors/colors-compute#6c8016e2714097f8232de575e1bdaa52f5d2b242",
     "red": "github:getcolors/red#f28d4398cda1a2f6ca074011b924ed0e9da0ce4a"
   },
   "devDependencies": {
