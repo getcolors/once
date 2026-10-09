@@ -241,3 +241,16 @@ def test_application_smtp_accepts_only_booleans():
     for smtp in (None, "false", "true", 0, 1, [], {}):
         assert "application smtp must be boolean" in state_errors(
             {**valid, "once": {"applications": [{**valid["once"]["applications"][0], "smtp": smtp}]}})
+
+
+def test_external_application_dns():
+    apps = [{"host": "managed.example.com"}, {"host": "external.example.com", "manage-dns": False}, {"host": "explicit.example.com", "manage-dns": True}]
+    for provider, resource in (("cloudflare", "cloudflare_dns_record"), ("yandex", "yandex_dns_recordset")):
+        records = json.loads(render_fn("apps", {"provider": provider, "ip": "203.0.113.10", "applications": apps}))["resource"][resource]
+        assert len(records) == 2
+        assert all("external" not in row["name"] for row in records.values())
+        assert json.loads(render_fn("apps", {"provider": provider, "applications": [apps[1]]})) == {}
+    for value in (False, True):
+        assert state_errors({**valid, "once": {"applications": [{**valid["once"]["applications"][0], "manage-dns": value}]}}) == []
+    for value in (None, "false", 0, [], {}):
+        assert "application manage-dns must be boolean" in state_errors({**valid, "once": {"applications": [{**valid["once"]["applications"][0], "manage-dns": value}]}})

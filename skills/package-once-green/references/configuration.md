@@ -158,3 +158,14 @@ SMTP environment overrides, plus disabling SMTP in the application's persisted
 settings if previously enabled. Setting `smtp: false` alone does not disable
 an existing service. Global SMTP provider validation, credentials, domain
 provisioning and DNS remain unchanged, even when all applications opt out.
+
+## Externally managed application DNS
+
+Set `manage-dns: false` on an application to keep it in ONCE application
+convergence while omitting its A record from generated DNS resources.
+The default is `true`; only booleans are accepted. Zone settings and SMTP DNS
+remain managed according to the selected providers. This supports an existing
+DNS-only record without changing its proxy or TTL settings. Establish external
+ownership first. Changing an already managed application to `false` removes its
+record from desired OpenTofu state and can delete it on apply; migrate state
+ownership deliberately before applying such a change.

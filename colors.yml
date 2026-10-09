@@ -6,6 +6,7 @@ compute-api-version: 2
 
 once:
   applications:
+    # Optional: manage-dns: false keeps an application A record externally owned.
     - host: www.getcolors.ai
       image: ghcr.io/getcolors/colors-website:latest
       github: getcolors/colors-website

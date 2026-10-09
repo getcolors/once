@@ -103,6 +103,8 @@
      (concat
       (when (and (contains? app :smtp) (not (boolean? smtp)))
         ["application smtp must be boolean"])
+      (when (and (contains? app :manage-dns) (not (boolean? (:manage-dns app))))
+        ["application manage-dns must be boolean"])
       (when (and (contains? app :deploy-strategy) (not (contains? #{"rolling" "stop-first"} deploy-strategy)))
         ["deploy-strategy must be rolling or stop-first"])
       (when (and (contains? app :deploy-stop-timeout)

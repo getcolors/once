@@ -180,7 +180,7 @@ export function renderFn(source: "apps" | "smtp", data: any): string {
     // One A record per application host — proxied on Cloudflare, plain on
     // Yandex. There is no implicit apex or wildcard record: only the hosts
     // desired state names resolve to the server.
-    return tofu.constructsJson((data.applications ?? []).map((app: any) =>
+    return tofu.constructsJson((data.applications ?? []).filter((app: any) => app["manage-dns"] !== false).map((app: any) =>
       tofu.construct("resource", resource, addFqnSuffix("io.github.getcolors.once.tools/app-dns", `-${app.host}`),
         appRecord(provider, data.ip, app.host))));
   }
@@ -298,7 +298,7 @@ function applicationData(smtp: any, app: any): any {
   const zone = registrableDomain(app.host);
   // github never reaches the host. It says where the deploy credentials are
   // published, which is no business of the module reconciling containers.
-  const { github: _github, smtp: _smtp, "deploy-strategy": _strategy, "deploy-stop-timeout": _timeout, ...rest } = app;
+  const { github: _github, smtp: _smtp, "manage-dns": _dns, "deploy-strategy": _strategy, "deploy-stop-timeout": _timeout, ...rest } = app;
   const configured: any = { ...rest, ...smtp, smtp_from: `Info <info@notifications.${zone}>`, ...(app.env && !Array.isArray(app.env) && typeof app.env === "object" ? { env: resolveEnv(app.env) } : {}), ...(app["deploy-strategy"] === "stop-first" ? {auto_update: false} : {}) };
   if (app.smtp === false) for (const key of ["smtp_server", "smtp_port", "smtp_username", "smtp_password", "smtp_from"]) delete configured[key];
   return configured;

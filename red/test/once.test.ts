@@ -214,3 +214,16 @@ test("application SMTP accepts only booleans", () => {
       .toContain("application smtp must be boolean");
   }
 });
+
+
+test("external application DNS", () => {
+  const applications = [{host: "managed.example.com"}, {host: "external.example.com", "manage-dns": false}, {host: "explicit.example.com", "manage-dns": true}];
+  for (const [provider, resource] of [["cloudflare", "cloudflare_dns_record"], ["yandex", "yandex_dns_recordset"]]) {
+    const records = Object.values(JSON.parse(renderFn("apps", {provider, ip: "203.0.113.10", applications})).resource[resource!]) as any[];
+    expect(records.length).toBe(2);
+    expect(records.every(row => !row.name.includes("external"))).toBe(true);
+    expect(JSON.parse(renderFn("apps", {provider, applications: [applications[1]]}))).toEqual({});
+  }
+  for (const value of [false, true]) expect(stateErrors({...valid, once: {applications: [{...valid.once.applications[0], "manage-dns": value}]}})).toEqual([]);
+  for (const value of [null, "false", 0, [], {}]) expect(stateErrors({...valid, once: {applications: [{...valid.once.applications[0], "manage-dns": value}]}})).toContain("application manage-dns must be boolean");
+});

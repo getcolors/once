@@ -160,7 +160,7 @@ def render_fn(source: str, data: dict) -> str:
         return tofu.constructs_json([
             tofu.construct("resource", resource, _add_suffix("io.github.getcolors.once.tools/app-dns", f"-{app['host']}"),
                            _app_record(provider, data.get("ip"), app["host"]))
-            for app in data.get("applications", [])
+            for app in data.get("applications", []) if app.get("manage-dns") is not False
         ])
     constructs = []
     for domain in data.get("domains", []):
@@ -284,7 +284,7 @@ def ansible_once(opts: dict) -> str:
     for app in once.get("applications", []):
         # github never reaches the host. It says where the deploy credentials are
         # published, which is no business of the module reconciling containers.
-        without_github = {k: v for k, v in app.items() if k not in ("github", "deploy-strategy", "deploy-stop-timeout", "smtp")}
+        without_github = {k: v for k, v in app.items() if k not in ("github", "deploy-strategy", "deploy-stop-timeout", "smtp", "manage-dns")}
         configured = {**without_github, **smtp, "smtp_from": f"Info <info@notifications.{registrable_domain(app['host'])}>"}
         if app.get("smtp") is False:
             for key in ("smtp_server", "smtp_port", "smtp_username", "smtp_password", "smtp_from"):

@@ -456,3 +456,11 @@
       (is (not (re-find #"(?m)^\s+smtp(?:_|:)" disabled)))
       (is (str/includes? disabled "ONCE_PAR_APP_TOKEN"))
       (is (not (str/includes? disabled "synthetic-smtp-secret"))))))
+
+(deftest external-application-dns
+  (let [apps [{:host "managed.example.com"} {:host "external.example.com" :manage-dns false} {:host "explicit.example.com" :manage-dns true}]]
+    (doseq [[provider resource] [["cloudflare" :cloudflare_dns_record] ["yandex" :yandex_dns_recordset]]]
+      (let [records (get-in (json/parse-string (tools/render-fn :apps {:provider provider :ip "203.0.113.10" :applications apps}) true) [:resource resource])]
+        (is (= 2 (count records)))
+        (is (every? #(not (str/includes? (:name %) "external")) (vals records)))
+        (is (= {} (json/parse-string (tools/render-fn :apps {:provider provider :applications [(second apps)]}) true)))))))

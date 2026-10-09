@@ -212,3 +212,9 @@
   (doseq [value [nil "false" "true" 0 1 [] {}]]
     (is (some #{"application smtp must be boolean"}
               (sut/state-errors (assoc-in valid [:once :applications 0 :smtp] value))))))
+
+(deftest application-dns-ownership-is-a-boolean
+  (doseq [value [true false]]
+    (is (= [] (sut/state-errors (assoc-in valid [:once :applications 0 :manage-dns] value)))))
+  (doseq [value [nil "false" 0 [] {}]]
+    (is (some #{"application manage-dns must be boolean"} (sut/state-errors (assoc-in valid [:once :applications 0 :manage-dns] value))))))

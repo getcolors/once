@@ -27,6 +27,19 @@ build_variant() {
   )
   diff -qr "$tmp/$variant/green/build/parity" "$tmp/$variant/red/build/parity"
   diff -qr "$tmp/$variant/green/build/parity" "$tmp/$variant/blue/build/parity"
+  # External DNS must not remove an application from ONCE's desired host list.
+  python3 - "$tmp/$variant" <<'PY'
+import json, sys
+from pathlib import Path
+for colour in ("green", "red", "blue"):
+    root = Path(sys.argv[1]) / colour / "build/parity"
+    application = (root / "ansible-remote/once.yml").read_text()
+    assert "external.example.com" in application
+    assert "manage-dns" not in application
+    records = root / "tofu-dns/apps.tf.json"
+    if records.exists():
+        assert "external.example.com" not in json.dumps(json.loads(records.read_text()))
+PY
 }
 
 # V2 always uses a named encrypted SSH resource. External key modes are

@@ -1631,5 +1631,6 @@ marker and require operator inspection; no automatic rollback is attempted.
 Existing automatic updates must be disabled in a controlled maintenance window.
 All maintenance paths must share the lock. This is host-local exclusion, not
 cross-host fencing or proof of final remote replication durability.</p></section>
+<section><h2>External application DNS</h2><p>Application <code>manage-dns: false</code> retains ONCE application management but omits its A record. The default is true. Zone settings and SMTP DNS are unchanged. Transfer state ownership before disabling management of an existing record; otherwise a later apply can delete it.</p></section>
 </body>
 </html>

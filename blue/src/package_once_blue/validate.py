@@ -118,6 +118,8 @@ def state_errors(opts: dict) -> list[str]:
     for index, app in enumerate(apps or []):
         if "smtp" in app and type(app["smtp"]) is not bool:
             errors.append("application smtp must be boolean")
+        if "manage-dns" in app and type(app["manage-dns"]) is not bool:
+            errors.append("application manage-dns must be boolean")
         if "deploy-strategy" in app and app["deploy-strategy"] not in ("rolling", "stop-first"):
             errors.append("deploy-strategy must be rolling or stop-first")
         timeout = app.get("deploy-stop-timeout")

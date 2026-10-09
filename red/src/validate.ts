@@ -136,6 +136,7 @@ export function stateErrors(opts: Opts): string[] {
   if (!apps?.length) errors.push("once applications must be a non-empty sequence");
   for (const [index, app] of (apps ?? []).entries()) {
     if ("smtp" in app && typeof app.smtp !== "boolean") errors.push("application smtp must be boolean");
+    if ("manage-dns" in app && typeof app["manage-dns"] !== "boolean") errors.push("application manage-dns must be boolean");
     if ("deploy-strategy" in app && !["rolling", "stop-first"].includes(app["deploy-strategy"])) errors.push("deploy-strategy must be rolling or stop-first");
     if ("deploy-stop-timeout" in app && !(Number.isInteger(app["deploy-stop-timeout"]) && app["deploy-stop-timeout"] >= 1 && app["deploy-stop-timeout"] <= 3600)) errors.push("deploy-stop-timeout must be an integer from 1 to 3600");
     if (app["deploy-strategy"] === "stop-first" && app.auto_update != null && app.auto_update !== false) errors.push("stop-first requires auto_update false");

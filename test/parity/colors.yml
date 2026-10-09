@@ -23,6 +23,10 @@ once:
       auto_update: false
       image: ghcr.io/example/site:latest
       github: example/site
+    - host: external.example.com
+      image: ghcr.io/example/external:latest
+      manage-dns: false
+      auto_update: false
 provider-compute: digitalocean
 provider-smtp: resend
 provider-dns: cloudflare
