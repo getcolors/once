@@ -15,7 +15,7 @@ import { homedir } from "node:os";
 // break the development symlink at red/red.
 const PINS = {
   "colors-compute-red": "github:getcolors/colors-compute#6c8016e2714097f8232de575e1bdaa52f5d2b242",
-  "package-once-red": "github:getcolors/once#27837d9629f9fb1b51fa7c45d1ecdc63c42dfdff",
+  "package-once-red": "github:getcolors/once#4aabd182c4f4d79850900c9052d37ee3b1a57850",
   // The Red SDK is a peer of colors-compute-red, not a dependency: a cold
   // cache installs nothing for a peer, so the consumer pins it explicitly, at
   // the commit red/package.json pins. scripts/launcher.sh checks they agree.
